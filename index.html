@@ -89,9 +89,7 @@
 <body>
 
 <div id="game-wrapper">
-
   <img id="bg-img" src="assets/bg-corridor.jpg" alt="">
-
   <canvas id="three-canvas"></canvas>
   <canvas id="game-canvas" width="390" height="700"></canvas>
 
@@ -119,7 +117,6 @@
     <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
     <div id="loading-text">Iniciando...</div>
   </div>
-
 </div>
 
 <script type="importmap">
@@ -139,17 +136,12 @@ const W = 390, H = 700;
 const PREFIX = 'Meshy_AI_Person1_biped_';
 const BASE = 'assets/characters/player/';
 
-// Mapa de animações confirmado
 const ANIM_MAP = {
   idle:    { path: BASE + 'idle/respire-fundo-e-olhe-ao-redor/', index: 2 },
   walk:    { path: BASE + 'movement/caminhando/',                index: 4 },
-  run:     { path: BASE + 'movement/corrida/',                   index: 4 },
   mine:    { path: BASE + 'mining/minerando/',                   index: 9 },
-  collect: { path: BASE + 'collect/coletando-item/',             index: 0 },
-  death:   { path: BASE + 'death/morte/',                        index: 0 },
 };
 
-// ─── LOADING ──────────────────────────────────────────────────
 function setLoading(pct, msg) {
   document.getElementById('loading-bar').style.width = pct + '%';
   document.getElementById('loading-text').textContent = msg;
@@ -158,27 +150,26 @@ function hideLoading() {
   document.getElementById('loading-screen').style.display = 'none';
 }
 
-// ─── THREE.JS SETUP ───────────────────────────────────────────
+// ─── THREE.JS ─────────────────────────────────────────────────
 const threeCanvas = document.getElementById('three-canvas');
 threeCanvas.width  = W;
 threeCanvas.height = H;
 
 const renderer = new THREE.WebGLRenderer({
   canvas: threeCanvas,
-  alpha: true,          // fundo transparente — deixa o bg-img aparecer
+  alpha: true,
   antialias: true,
 });
 renderer.setSize(W, H);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-renderer.setClearColor(0x000000, 0); // transparente
+renderer.setClearColor(0x000000, 0);
 
 const scene = new THREE.Scene();
 
-// Câmera posicionada atrás e levemente acima — ângulo do corredor
-const camera = new THREE.PerspectiveCamera(40, W / H, 0.1, 50);
-camera.position.set(0, 1.8, 4);
-camera.lookAt(0, 0.6, 0);
+// Câmera afastada — personagem no terço inferior da tela
+const camera = new THREE.PerspectiveCamera(40, W / H, 0.1, 100);
+camera.position.set(0, 2.5, 7);
+camera.lookAt(0, 0.8, 0);
 
 // Luzes
 scene.add(new THREE.AmbientLight(0x1a2a4a, 2.5));
@@ -186,64 +177,37 @@ const dirLight = new THREE.DirectionalLight(0x4adbb8, 2);
 dirLight.position.set(1, 4, 3);
 dirLight.castShadow = true;
 scene.add(dirLight);
-const fillLight = new THREE.PointLight(0x7F77DD, 1.5, 8);
+const fillLight = new THREE.PointLight(0x7F77DD, 1.5, 10);
 fillLight.position.set(-2, 1.5, 1);
 scene.add(fillLight);
-const groundGlow = new THREE.PointLight(0x1D9E75, 0.8, 3);
+const groundGlow = new THREE.PointLight(0x1D9E75, 0.8, 4);
 groundGlow.position.set(0, 0.1, 0.5);
 scene.add(groundGlow);
 
-// ─── PERSONAGEM 3D ────────────────────────────────────────────
+// ─── PERSONAGEM ───────────────────────────────────────────────
 const fbxLoader = new FBXLoader();
 const texLoader  = new THREE.TextureLoader();
-
-let mixer   = null;
+let mixer = null;
 let actions = {};
 let currentAction = null;
 let character = null;
 
-function loadTextures(path) {
-  return {
-    map:      texLoader.load(path + PREFIX + 'texture_0.png'),
-    normal:   texLoader.load(path + PREFIX + 'texture_0_normal.png'),
-    rough:    texLoader.load(path + PREFIX + 'texture_0_roughness.png'),
-    metallic: texLoader.load(path + PREFIX + 'texture_0_metallic.png'),
-  };
-}
-
-function applyMaterial(model, textures) {
-  model.traverse(c => {
-    if (c.isMesh) {
-      c.castShadow = true;
-      c.material = new THREE.MeshStandardMaterial({
-        map:         textures.map,
-        normalMap:   textures.normal,
-        roughnessMap:textures.rough,
-        metalnessMap:textures.metallic,
-        roughness: 0.65,
-        metalness: 0.35,
-      });
-    }
-  });
-}
-
 function loadAnimation(name, callback) {
   const anim = ANIM_MAP[name];
-  if (!anim) return;
+  if (!anim || !mixer) return;
   fbxLoader.load(anim.path + PREFIX + 'Meshy_AI_Meshy_Merged_Animations.fbx', (fbx) => {
-    const clip   = fbx.animations[anim.index];
+    const clip = fbx.animations[anim.index];
     if (!clip) return;
-    const action = mixer.clipAction(clip);
-    actions[name] = action;
-    if (callback) callback(action);
+    actions[name] = mixer.clipAction(clip);
+    if (callback) callback();
   });
 }
 
-function playAnim(name, fadeTime = 0.3) {
+function playAnim(name, fade = 0.25) {
   const next = actions[name];
   if (!next || next === currentAction) return;
-  if (currentAction) currentAction.fadeOut(fadeTime);
-  next.reset().fadeIn(fadeTime).play();
+  if (currentAction) currentAction.fadeOut(fade);
+  next.reset().fadeIn(fade).play();
   currentAction = next;
 }
 
@@ -252,43 +216,49 @@ function loadCharacter(onDone) {
   setLoading(20, 'Carregando personagem...');
 
   fbxLoader.load(idlePath + PREFIX + 'Character_output.fbx', (fbx) => {
-    fbx.scale.setScalar(0.012);
+    // Escala pequena — personagem ocupa ~1/4 da altura da tela
+    fbx.scale.setScalar(0.004);
     fbx.position.set(0, 0, 0);
-    fbx.rotation.y = Math.PI; // vira de costas para a câmera
+    fbx.rotation.y = Math.PI; // de costas para a câmera
 
-    const textures = loadTextures(idlePath);
-    applyMaterial(fbx, textures);
+    const map      = texLoader.load(idlePath + PREFIX + 'texture_0.png');
+    const normal   = texLoader.load(idlePath + PREFIX + 'texture_0_normal.png');
+    const rough    = texLoader.load(idlePath + PREFIX + 'texture_0_roughness.png');
+    const metallic = texLoader.load(idlePath + PREFIX + 'texture_0_metallic.png');
+
+    fbx.traverse(c => {
+      if (c.isMesh) {
+        c.castShadow = true;
+        c.material = new THREE.MeshStandardMaterial({
+          map, normalMap: normal,
+          roughnessMap: rough, metalnessMap: metallic,
+          roughness: 0.65, metalness: 0.35,
+        });
+      }
+    });
 
     scene.add(fbx);
     character = fbx;
     mixer = new THREE.AnimationMixer(fbx);
+    setLoading(50, 'Carregando idle...');
 
-    setLoading(50, 'Carregando animações...');
+    loadAnimation('idle', () => {
+      actions['idle'].play();
+      currentAction = actions['idle'];
+      setLoading(75, 'Carregando walk...');
 
-    // Carrega idle primeiro
-    loadAnimation('idle', (action) => {
-      action.play();
-      currentAction = action;
-      setLoading(70, 'Carregando walk...');
-
-      // Carrega walk
       loadAnimation('walk', () => {
-        setLoading(85, 'Carregando mining...');
+        setLoading(90, 'Carregando mining...');
 
-        // Carrega mine
         loadAnimation('mine', () => {
           setLoading(100, 'Pronto!');
-          setTimeout(() => {
-            hideLoading();
-            if (onDone) onDone();
-          }, 300);
+          setTimeout(() => { hideLoading(); if (onDone) onDone(); }, 300);
         });
       });
     });
 
   }, (xhr) => {
-    const pct = Math.round(xhr.loaded / xhr.total * 20);
-    setLoading(pct, 'Carregando modelo...');
+    setLoading(Math.round(xhr.loaded / xhr.total * 20), 'Carregando modelo...');
   });
 }
 
@@ -296,18 +266,16 @@ function loadCharacter(onDone) {
 const state = {
   hp: 100, hpMax: 100,
   xp: 0,  xpMax: 100,
-  coins: 0,
-  depth: 0,
+  coins: 0, depth: 0,
   cameraY: 0,
   playerX: W / 2,
   playerY: H * 0.72,
   speed: 3,
-  facing: 'back',
   animState: 'idle',
 };
 
 const keys = {};
-window.addEventListener('keydown', e => { keys[e.key] = true; e.preventDefault(); });
+window.addEventListener('keydown', e => { keys[e.key] = true; });
 window.addEventListener('keyup',   e => { keys[e.key] = false; });
 
 // ─── BLOCOS ───────────────────────────────────────────────────
@@ -335,7 +303,6 @@ function generateBlocks() {
   }
 }
 
-// ─── PARTÍCULAS ───────────────────────────────────────────────
 const particles = [];
 function spawnParticles(x, y, color) {
   for (let i = 0; i < 8; i++) {
@@ -343,8 +310,7 @@ function spawnParticles(x, y, color) {
       x, y,
       vx: (Math.random() - 0.5) * 5,
       vy: (Math.random() - 0.5) * 5 - 2,
-      life: 1, color,
-      size: 2 + Math.random() * 4,
+      life: 1, color, size: 2 + Math.random() * 4,
     });
   }
 }
@@ -355,11 +321,9 @@ let mineTimer = 0;
 function mineNearbyBlock() {
   const px = state.playerX;
   const py = state.playerY + state.cameraY;
-  const reach = 90;
   for (let i = blocks.length - 1; i >= 0; i--) {
     const b = blocks[i];
-    const dist = Math.hypot(px - (b.x + b.w/2), py - (b.y + b.h/2));
-    if (dist < reach) {
+    if (Math.hypot(px - (b.x + b.w/2), py - (b.y + b.h/2)) < 90) {
       b.hp--;
       spawnParticles(b.x + b.w/2, b.y + b.h/2 - state.cameraY, BLOCK_COLORS_INV[b.type]);
       if (b.hp <= 0) {
@@ -378,45 +342,10 @@ function mineNearbyBlock() {
 const canvas2d = document.getElementById('game-canvas');
 const ctx = canvas2d.getContext('2d');
 
-function drawBlocks() {
-  blocks.forEach(b => {
-    const drawY = b.y - state.cameraY;
-    if (drawY > H + TILE || drawY < -TILE) return;
-    ctx.fillStyle = BLOCK_COLORS[b.type] || '#111827';
-    ctx.fillRect(b.x, drawY, b.w - 1, b.h - 1);
-    if (BLOCK_ACCENTS[b.type]) {
-      ctx.strokeStyle = BLOCK_ACCENTS[b.type];
-      ctx.lineWidth = 1;
-      ctx.strokeRect(b.x + 2, drawY + 2, b.w - 5, b.h - 5);
-      ctx.fillStyle = BLOCK_ACCENTS[b.type];
-      ctx.globalAlpha = 0.45;
-      ctx.beginPath();
-      ctx.arc(b.x + b.w/2, drawY + b.h/2, 5, 0, Math.PI*2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    }
-    if (b.hp < b.maxHp) {
-      const pct = b.hp / b.maxHp;
-      ctx.fillStyle = '#1a2035';
-      ctx.fillRect(b.x, drawY + b.h - 5, b.w, 4);
-      ctx.fillStyle = pct > 0.5 ? '#1D9E75' : '#EF9F27';
-      ctx.fillRect(b.x, drawY + b.h - 5, b.w * pct, 4);
-    }
-  });
-}
+function draw2D() {
+  ctx.clearRect(0, 0, W, H);
 
-function drawParticles() {
-  particles.forEach(p => {
-    ctx.globalAlpha = p.life;
-    ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-  });
-}
-
-function drawWalls() {
+  // Paredes laterais
   ctx.fillStyle = 'rgba(6,9,15,0.82)';
   ctx.fillRect(0, 0, wallW, H);
   ctx.fillRect(W - wallW, 0, wallW, H);
@@ -426,17 +355,51 @@ function drawWalls() {
   ctx.moveTo(wallW, 0); ctx.lineTo(wallW, H);
   ctx.moveTo(W - wallW, 0); ctx.lineTo(W - wallW, H);
   ctx.stroke();
-}
 
-function drawFog() {
+  // Blocos
+  blocks.forEach(b => {
+    const dy = b.y - state.cameraY;
+    if (dy > H + TILE || dy < -TILE) return;
+    ctx.fillStyle = BLOCK_COLORS[b.type];
+    ctx.fillRect(b.x, dy, b.w - 1, b.h - 1);
+    if (BLOCK_ACCENTS[b.type]) {
+      ctx.strokeStyle = BLOCK_ACCENTS[b.type];
+      ctx.lineWidth = 1;
+      ctx.strokeRect(b.x + 2, dy + 2, b.w - 5, b.h - 5);
+      ctx.fillStyle = BLOCK_ACCENTS[b.type];
+      ctx.globalAlpha = 0.45;
+      ctx.beginPath();
+      ctx.arc(b.x + b.w/2, dy + b.h/2, 5, 0, Math.PI*2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    if (b.hp < b.maxHp) {
+      const pct = b.hp / b.maxHp;
+      ctx.fillStyle = '#1a2035';
+      ctx.fillRect(b.x, dy + b.h - 5, b.w, 4);
+      ctx.fillStyle = pct > 0.5 ? '#1D9E75' : '#EF9F27';
+      ctx.fillRect(b.x, dy + b.h - 5, b.w * pct, 4);
+    }
+  });
+
+  // Partículas
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  });
+
+  // Névoa
   const grad = ctx.createLinearGradient(0, H * 0.55, 0, H);
   grad.addColorStop(0, 'rgba(8,13,24,0)');
   grad.addColorStop(1, 'rgba(8,13,24,0.4)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
-}
 
-function drawInventory() {
+  // Inventário
   const panelH = 64;
   const panelY = H - panelH;
   ctx.fillStyle = 'rgba(8,13,24,0.92)';
@@ -447,10 +410,9 @@ function drawInventory() {
   ctx.moveTo(0, panelY); ctx.lineTo(W, panelY);
   ctx.stroke();
 
-  const types = [1,2,3,4,5];
   const slotW = 56;
-  const startX = (W - types.length * slotW) / 2;
-  types.forEach((type, i) => {
+  const startX = (W - 5 * slotW) / 2;
+  [1,2,3,4,5].forEach((type, i) => {
     const sx = startX + i * slotW;
     const sy = panelY + 8;
     ctx.strokeStyle = inventory[type] > 0 ? BLOCK_COLORS_INV[type] : '#1a2440';
@@ -477,7 +439,7 @@ function drawInventory() {
 }
 
 // ─── UPDATE ───────────────────────────────────────────────────
-function update(delta) {
+function update() {
   let moving = false;
 
   if (keys['ArrowUp'] || keys['w'] || keys['W'])    { state.playerY -= state.speed; moving = true; }
@@ -487,13 +449,11 @@ function update(delta) {
 
   state.playerX = Math.max(wallW + 40, Math.min(W - wallW - 40, state.playerX));
 
-  // Câmera segue jogador
   const targetCamY = state.playerY - H * 0.72;
   state.cameraY += (targetCamY - state.cameraY) * 0.06;
   if (state.cameraY < 0) state.cameraY = 0;
   state.depth = Math.floor(state.cameraY / 10);
 
-  // Mineração
   if (keys['z'] || keys['Z']) {
     mineTimer++;
     if (mineTimer % 20 === 1) mineNearbyBlock();
@@ -503,33 +463,26 @@ function update(delta) {
     state.animState = moving ? 'walk' : 'idle';
   }
 
-  // Sincroniza animação 3D com estado
-  if (actions[state.animState]) {
-    playAnim(state.animState);
-  }
+  if (actions[state.animState]) playAnim(state.animState);
 
-  // Move personagem 3D horizontalmente conforme jogador se move
+  // Move personagem 3D lateralmente com o jogador
   if (character) {
-    // Mapeia posição X do jogador (wallW..W-wallW) para posição 3D (-0.8..0.8)
-    const normalized = (state.playerX - W/2) / (corridorW / 2);
-    character.position.x += (normalized * 0.6 - character.position.x) * 0.1;
+    const norm = (state.playerX - W/2) / (corridorW / 2);
+    character.position.x += (norm * 0.5 - character.position.x) * 0.1;
   }
 
-  // Partículas
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
     p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.life -= 0.04;
     if (p.life <= 0) particles.splice(i, 1);
   }
 
-  // HUD
   document.getElementById('bar-hp').style.width    = (state.hp / state.hpMax * 100) + '%';
   document.getElementById('bar-xp').style.width    = (state.xp / state.xpMax * 100) + '%';
   document.getElementById('hud-coins').textContent = state.coins;
   document.getElementById('hud-depth').textContent = state.depth + 'm';
 
-  // Pulso na luz de chão
-  if (groundGlow) groundGlow.intensity = 0.6 + Math.sin(Date.now() * 0.002) * 0.2;
+  groundGlow.intensity = 0.6 + Math.sin(Date.now() * 0.002) * 0.2;
 }
 
 // ─── RESIZE ───────────────────────────────────────────────────
@@ -542,36 +495,20 @@ function resize() {
 resize();
 window.addEventListener('resize', resize);
 
-// ─── GAME LOOP ────────────────────────────────────────────────
+// ─── LOOP ─────────────────────────────────────────────────────
 const clock = new THREE.Clock();
 function loop() {
   requestAnimationFrame(loop);
   const delta = clock.getDelta();
-
-  // Atualiza animação 3D
   if (mixer) mixer.update(delta);
-
-  // Update lógica
-  update(delta);
-
-  // Desenha canvas 2D
-  ctx.clearRect(0, 0, W, H);
-  drawWalls();
-  drawBlocks();
-  drawParticles();
-  drawFog();
-  drawInventory();
-
-  // Renderiza Three.js
+  update();
+  draw2D();
   renderer.render(scene, camera);
 }
 
-// ─── INIT ─────────────────────────────────────────────────────
 generateBlocks();
-setLoading(10, 'Preparando cena...');
-loadCharacter(() => {
-  loop();
-});
+setLoading(10, 'Preparando...');
+loadCharacter(() => { loop(); });
 </script>
 
 </body>
