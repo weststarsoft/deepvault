@@ -22,15 +22,9 @@
       cursor: grab;
     }
     #game-wrapper:active { cursor: grabbing; }
-    #three-canvas {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      z-index: 0;
-    }
+    #three-canvas { position: absolute; top:0; left:0; width:100%; height:100%; z-index:0; }
     #hud {
-      position: absolute;
-      top: 0; left: 0; width: 100%;
+      position: absolute; top:0; left:0; width:100%;
       display: flex; justify-content: space-between; align-items: center;
       padding: 10px 16px;
       background: rgba(8,13,24,0.88);
@@ -48,7 +42,7 @@
     #hud-coins { color: #EF9F27; }
     #hud-depth { color: #1D9E75; }
     #inventory-panel {
-      position: absolute; bottom: 0; left: 0; width: 100%;
+      position: absolute; bottom:0; left:0; width:100%;
       display: flex; justify-content: center; gap: 8px;
       padding: 10px 0 12px;
       background: rgba(8,13,24,0.92);
@@ -56,37 +50,36 @@
       z-index: 3; pointer-events: none;
     }
     .inv-slot {
-      width: 44px; height: 44px;
-      border: 1px solid #1a2440; border-radius: 6px;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center; gap: 2px;
-      font-family: monospace; font-size: 10px;
+      width:44px; height:44px;
+      border:1px solid #1a2440; border-radius:6px;
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center; gap:2px;
+      font-family:monospace; font-size:10px;
     }
-    .inv-dot { width: 14px; height: 14px; border-radius: 50%; }
+    .inv-dot { width:14px; height:14px; border-radius:50%; }
     #mine-hint {
-      position: absolute; bottom: 70px; left: 50%;
-      transform: translateX(-50%);
-      font-family: monospace; font-size: 10px;
-      color: rgba(29,158,117,0.5);
-      pointer-events: none; z-index: 3; white-space: nowrap;
+      position:absolute; bottom:70px; left:50%;
+      transform:translateX(-50%);
+      font-family:monospace; font-size:10px;
+      color:rgba(29,158,117,0.5);
+      pointer-events:none; z-index:3; white-space:nowrap;
     }
     #loading-screen {
-      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-      background: #080d18;
-      display: flex; flex-direction: column;
-      justify-content: center; align-items: center;
-      z-index: 10; gap: 16px;
-      font-family: monospace; color: #1D9E75;
+      position:absolute; top:0; left:0; width:100%; height:100%;
+      background:#080d18;
+      display:flex; flex-direction:column;
+      justify-content:center; align-items:center;
+      z-index:10; gap:16px;
+      font-family:monospace; color:#1D9E75;
     }
-    #loading-bar-wrap { width: 200px; height: 4px; background: #1a2035; border-radius: 2px; overflow: hidden; }
-    #loading-bar { height: 100%; background: #1D9E75; border-radius: 2px; width: 0%; transition: width 0.3s; }
-    #loading-text { font-size: 12px; color: #5a6a8a; }
+    #loading-bar-wrap { width:200px; height:4px; background:#1a2035; border-radius:2px; overflow:hidden; }
+    #loading-bar { height:100%; background:#1D9E75; border-radius:2px; width:0%; transition:width 0.3s; }
+    #loading-text { font-size:12px; color:#5a6a8a; }
   </style>
 </head>
 <body>
 <div id="game-wrapper">
   <canvas id="three-canvas"></canvas>
-
   <div id="hud">
     <div class="hud-block">
       <span class="hud-label">HP</span>
@@ -105,7 +98,6 @@
       <span class="hud-value" id="hud-depth">0m</span>
     </div>
   </div>
-
   <div id="inventory-panel">
     <div class="inv-slot"><div class="inv-dot" style="background:#888780"></div><span id="inv-count-1" style="color:#888780">0</span></div>
     <div class="inv-slot"><div class="inv-dot" style="background:#5a6a8a"></div><span id="inv-count-2" style="color:#5a6a8a">0</span></div>
@@ -113,9 +105,7 @@
     <div class="inv-slot"><div class="inv-dot" style="background:#1D9E75"></div><span id="inv-count-4" style="color:#1D9E75">0</span></div>
     <div class="inv-slot"><div class="inv-dot" style="background:#7F77DD"></div><span id="inv-count-5" style="color:#7F77DD">0</span></div>
   </div>
-
   <div id="mine-hint">WASD — mover &nbsp;|&nbsp; Z — minerar &nbsp;|&nbsp; arrastar — girar câmera</div>
-
   <div id="loading-screen">
     <div style="font-size:18px;font-weight:bold">DEEPVAULT</div>
     <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
@@ -159,150 +149,127 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.setClearColor(0x06090f);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x06090f, 0.04);
+scene.fog = new THREE.FogExp2(0x06090f, 0.03);
 
 // ─── CÂMERA ───────────────────────────────────────────────────
 const camera = new THREE.PerspectiveCamera(50, W / H, 0.1, 80);
 
-// Direção que o personagem está olhando (em radianos)
-// 0 = olhando para Z negativo (fundo da caverna)
-let playerFacingYaw = 0;
+// Ângulo que o personagem está olhando (yaw mundial)
+// Começa olhando para Z negativo (fundo da caverna)
+let charYaw = Math.PI;
 
-// Offset da câmera relativo ao personagem
-// yawOffset: quanto a câmera está rotacionada em relação ao personagem
-// Limitado entre -PI/2 e +PI/2 (90° para cada lado = 180° total atrás)
+// Câmera — offset angular relativo ao personagem
 const cam = {
-  yawOffset: 0,    // offset horizontal relativo ao personagem
-  pitch: 0.3,      // ângulo vertical — levemente de cima
-  dist: 4.0,       // distância do personagem
+  yawOffset: 0,     // quanto a câmera desviou do personagem (-90° a +90°)
+  pitch: 0.3,       // ângulo vertical
+  dist: 5.5,        // distância — maior para ver caverna mais larga
   dragging: false,
-  lastX: 0,
-  lastY: 0,
+  lastX: 0, lastY: 0,
 };
 
-// ─── CONTROLE DE CÂMERA ───────────────────────────────────────
+// ─── CONTROLE CÂMERA ──────────────────────────────────────────
 const wrapper = document.getElementById('game-wrapper');
-
-function onDragStart(x, y) {
-  cam.dragging = true;
-  cam.lastX = x;
-  cam.lastY = y;
-}
-function onDragMove(x, y) {
+wrapper.addEventListener('mousedown', e => { cam.dragging=true; cam.lastX=e.clientX; cam.lastY=e.clientY; });
+window.addEventListener('mouseup', () => { cam.dragging=false; });
+window.addEventListener('mousemove', e => {
   if (!cam.dragging) return;
-  const dx = x - cam.lastX;
-  const dy = y - cam.lastY;
-  cam.yawOffset -= dx * 0.008;
-  cam.pitch      -= dy * 0.006;
-  // Limita câmera a 90° de cada lado (atrás do personagem)
-  cam.yawOffset = Math.max(-Math.PI * 0.48, Math.min(Math.PI * 0.48, cam.yawOffset));
-  // Limita pitch — não vai abaixo do chão nem acima do teto
-  cam.pitch = Math.max(0.05, Math.min(0.65, cam.pitch));
-  cam.lastX = x;
-  cam.lastY = y;
-}
-function onDragEnd() { cam.dragging = false; }
-
-wrapper.addEventListener('mousedown', e => onDragStart(e.clientX, e.clientY));
-window.addEventListener('mouseup', onDragEnd);
-window.addEventListener('mousemove', e => onDragMove(e.clientX, e.clientY));
-
+  cam.yawOffset -= (e.clientX - cam.lastX) * 0.008;
+  cam.pitch      -= (e.clientY - cam.lastY) * 0.006;
+  cam.yawOffset = Math.max(-Math.PI*0.45, Math.min(Math.PI*0.45, cam.yawOffset));
+  cam.pitch     = Math.max(0.08, Math.min(0.65, cam.pitch));
+  cam.lastX = e.clientX; cam.lastY = e.clientY;
+});
 wrapper.addEventListener('touchstart', e => {
-  if (e.touches.length === 1) onDragStart(e.touches[0].clientX, e.touches[0].clientY);
-}, { passive: true });
-window.addEventListener('touchend', onDragEnd);
+  if(e.touches.length===1){ cam.dragging=true; cam.lastX=e.touches[0].clientX; cam.lastY=e.touches[0].clientY; }
+}, {passive:true});
+window.addEventListener('touchend', () => { cam.dragging=false; });
 window.addEventListener('touchmove', e => {
-  if (e.touches.length === 1) onDragMove(e.touches[0].clientX, e.touches[0].clientY);
-}, { passive: true });
+  if(!cam.dragging||e.touches.length!==1) return;
+  cam.yawOffset -= (e.touches[0].clientX - cam.lastX) * 0.008;
+  cam.pitch      -= (e.touches[0].clientY - cam.lastY) * 0.006;
+  cam.yawOffset = Math.max(-Math.PI*0.45, Math.min(Math.PI*0.45, cam.yawOffset));
+  cam.pitch     = Math.max(0.08, Math.min(0.65, cam.pitch));
+  cam.lastX = e.touches[0].clientX; cam.lastY = e.touches[0].clientY;
+}, {passive:true});
 
 // ─── LUZES ────────────────────────────────────────────────────
 scene.add(new THREE.AmbientLight(0x2a3a5a, 8));
 scene.add(new THREE.HemisphereLight(0x1a2a4a, 0x0d1520, 4));
-
 const dirLight = new THREE.DirectionalLight(0x3a5a7a, 5);
-dirLight.position.set(2, 8, 4); dirLight.castShadow = true;
-scene.add(dirLight);
+dirLight.position.set(2,8,4); dirLight.castShadow=true; scene.add(dirLight);
+scene.add(Object.assign(new THREE.DirectionalLight(0x1a2a3a, 3), {position: new THREE.Vector3(-2,4,-2)}));
+const lantern = new THREE.SpotLight(0x5adcc8, 12, 16, Math.PI/4, 0.3);
+lantern.castShadow=false; scene.add(lantern); scene.add(lantern.target);
+const purpleLight = new THREE.PointLight(0x7F77DD, 3, 14); scene.add(purpleLight);
+const groundGlow  = new THREE.PointLight(0x1D9E75, 2, 8);  scene.add(groundGlow);
 
-const dirLight2 = new THREE.DirectionalLight(0x1a2a3a, 3);
-dirLight2.position.set(-2, 4, -2);
-scene.add(dirLight2);
-
-const lantern = new THREE.SpotLight(0x5adcc8, 12, 14, Math.PI / 4.5, 0.35);
-lantern.castShadow = false;
-scene.add(lantern);
-scene.add(lantern.target);
-
-const purpleLight = new THREE.PointLight(0x7F77DD, 3, 12);
-scene.add(purpleLight);
-
-const groundGlow = new THREE.PointLight(0x1D9E75, 2, 6);
-scene.add(groundGlow);
-
-// ─── CAVERNA ──────────────────────────────────────────────────
+// ─── CAVERNA — largura dobrada ─────────────────────────────────
 const CAVE_LENGTH = 150;
-const CAVE_WIDTH  = 3.0;
-const CAVE_HEIGHT = 3.8;
+const CAVE_WIDTH  = 6.0;   // era 3.0 — agora dobrou
+const CAVE_HEIGHT = 4.2;
 const SEG         = 2;
 
 function createRockTexture(c1, c2) {
-  const sz = 256;
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = sz;
-  const cx = cv.getContext('2d');
-  cx.fillStyle = c1; cx.fillRect(0, 0, sz, sz);
-  for (let i = 0; i < 180; i++) {
-    const x=Math.random()*sz, y=Math.random()*sz, r=3+Math.random()*16;
+  const sz=256, cv=document.createElement('canvas');
+  cv.width=cv.height=sz;
+  const cx=cv.getContext('2d');
+  cx.fillStyle=c1; cx.fillRect(0,0,sz,sz);
+  for(let i=0;i<180;i++){
+    const x=Math.random()*sz,y=Math.random()*sz,r=3+Math.random()*16;
     const g=cx.createRadialGradient(x,y,0,x,y,r);
     g.addColorStop(0,c2); g.addColorStop(1,'transparent');
     cx.fillStyle=g; cx.beginPath(); cx.arc(x,y,r,0,Math.PI*2); cx.fill();
   }
   cx.strokeStyle='rgba(0,0,0,0.2)'; cx.lineWidth=1;
   for(let i=0;i<10;i++){
-    cx.beginPath();
-    cx.moveTo(Math.random()*sz,Math.random()*sz);
-    cx.lineTo(Math.random()*sz,Math.random()*sz);
-    cx.stroke();
+    cx.beginPath(); cx.moveTo(Math.random()*sz,Math.random()*sz);
+    cx.lineTo(Math.random()*sz,Math.random()*sz); cx.stroke();
   }
   const t=new THREE.CanvasTexture(cv);
-  t.wrapS=t.wrapT=THREE.RepeatWrapping;
-  t.repeat.set(3,3);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(4,4);
   return t;
 }
 
-const wallMat  = new THREE.MeshStandardMaterial({ map:createRockTexture('#243050','#131e32'), roughness:0.9,  metalness:0.08, color:0x243050 });
-const ceilMat  = new THREE.MeshStandardMaterial({ map:createRockTexture('#182030','#0d1525'), roughness:0.95, metalness:0.05, color:0x182030 });
-const floorMat = new THREE.MeshStandardMaterial({ map:createRockTexture('#1e2c40','#121c2c'), roughness:0.88, metalness:0.12, color:0x1e2c40 });
+const wallMat  = new THREE.MeshStandardMaterial({map:createRockTexture('#243050','#131e32'),roughness:0.9, metalness:0.08,color:0x243050});
+const ceilMat  = new THREE.MeshStandardMaterial({map:createRockTexture('#182030','#0d1525'),roughness:0.95,metalness:0.05,color:0x182030});
+const floorMat = new THREE.MeshStandardMaterial({map:createRockTexture('#1e2c40','#121c2c'),roughness:0.88,metalness:0.12,color:0x1e2c40});
 
 function buildCave() {
-  const g = new THREE.Group();
-  const n = CAVE_LENGTH / SEG;
-  for (let i = 0; i < n; i++) {
-    const z=-(i*SEG), wob=Math.sin(i*0.25)*0.12;
-    const fl=new THREE.Mesh(new THREE.BoxGeometry(CAVE_WIDTH+0.6,0.3,SEG+0.05),floorMat);
+  const g=new THREE.Group();
+  const n=CAVE_LENGTH/SEG;
+  for(let i=0;i<n;i++){
+    const z=-(i*SEG), wob=Math.sin(i*0.25)*0.2;
+    // Chão
+    const fl=new THREE.Mesh(new THREE.BoxGeometry(CAVE_WIDTH+1,0.3,SEG+0.05),floorMat);
     fl.position.set(wob*0.2,-0.15,z); fl.receiveShadow=true; g.add(fl);
-    const lh=CAVE_HEIGHT+(Math.random()-0.5)*0.5;
-    const lw=new THREE.Mesh(new THREE.BoxGeometry(0.7+Math.random()*0.3,lh,SEG+0.05),wallMat);
-    lw.position.set(-(CAVE_WIDTH/2)-0.25+wob,lh/2-0.15,z);
+    // Parede esquerda
+    const lh=CAVE_HEIGHT+(Math.random()-0.5)*0.6;
+    const lw=new THREE.Mesh(new THREE.BoxGeometry(0.9+Math.random()*0.4,lh,SEG+0.05),wallMat);
+    lw.position.set(-(CAVE_WIDTH/2)-0.3+wob,lh/2-0.15,z);
     lw.castShadow=true; lw.receiveShadow=true; g.add(lw);
-    const rh=CAVE_HEIGHT+(Math.random()-0.5)*0.5;
-    const rw=new THREE.Mesh(new THREE.BoxGeometry(0.7+Math.random()*0.3,rh,SEG+0.05),wallMat);
-    rw.position.set((CAVE_WIDTH/2)+0.25+wob,rh/2-0.15,z);
+    // Parede direita
+    const rh=CAVE_HEIGHT+(Math.random()-0.5)*0.6;
+    const rw=new THREE.Mesh(new THREE.BoxGeometry(0.9+Math.random()*0.4,rh,SEG+0.05),wallMat);
+    rw.position.set((CAVE_WIDTH/2)+0.3+wob,rh/2-0.15,z);
     rw.castShadow=true; rw.receiveShadow=true; g.add(rw);
-    const ct=new THREE.Mesh(new THREE.BoxGeometry(CAVE_WIDTH+1.4,0.4,SEG+0.05),ceilMat);
+    // Teto
+    const ct=new THREE.Mesh(new THREE.BoxGeometry(CAVE_WIDTH+2,0.5,SEG+0.05),ceilMat);
     ct.position.set(wob*0.4,CAVE_HEIGHT-0.15,z); ct.receiveShadow=true; g.add(ct);
+    // Stalactites
     if(i%3===0){
-      const sn=2+Math.floor(Math.random()*3);
+      const sn=2+Math.floor(Math.random()*4);
       for(let s=0;s<sn;s++){
-        const sh=0.25+Math.random()*0.7;
-        const sm=new THREE.Mesh(new THREE.ConeGeometry(0.04+Math.random()*0.07,sh,5),ceilMat);
-        sm.position.set((Math.random()-0.5)*(CAVE_WIDTH-0.3),CAVE_HEIGHT-0.15-sh/2,z+(Math.random()-0.5)*SEG);
+        const sh=0.3+Math.random()*0.8;
+        const sm=new THREE.Mesh(new THREE.ConeGeometry(0.05+Math.random()*0.08,sh,5),ceilMat);
+        sm.position.set((Math.random()-0.5)*(CAVE_WIDTH-0.6),CAVE_HEIGHT-0.15-sh/2,z+(Math.random()-0.5)*SEG);
         sm.rotation.z=Math.PI; g.add(sm);
       }
     }
+    // Stalagmites
     if(i%6===2&&Math.random()>0.5){
-      const sh=0.3+Math.random()*0.4;
-      const sm=new THREE.Mesh(new THREE.ConeGeometry(0.05,sh,5),floorMat);
-      sm.position.set((Math.random()>0.5?1:-1)*(0.7+Math.random()*0.7),sh/2,z); g.add(sm);
+      const sh=0.3+Math.random()*0.5;
+      const sm=new THREE.Mesh(new THREE.ConeGeometry(0.06,sh,5),floorMat);
+      sm.position.set((Math.random()>0.5?1:-1)*(1+Math.random()*1.5),sh/2,z); g.add(sm);
     }
   }
   scene.add(g);
@@ -318,12 +285,12 @@ const MTYPES=[
 ];
 const minerals=[];
 function spawnMineral(z){
-  const r=Math.random(); let cum=0, mt=MTYPES[0];
+  const r=Math.random(); let cum=0,mt=MTYPES[0];
   for(const m of MTYPES){cum+=m.prob;if(r<cum){mt=m;break;}}
   const side=Math.random()>0.5?1:-1;
   const x=side*(CAVE_WIDTH/2+0.05);
-  const y=0.25+Math.random()*1.6;
-  const sz=0.11+Math.random()*0.17;
+  const y=0.3+Math.random()*1.8;
+  const sz=0.12+Math.random()*0.18;
   const mesh=new THREE.Mesh(
     new THREE.OctahedronGeometry(sz,0),
     new THREE.MeshStandardMaterial({color:mt.color,emissive:mt.emissive,emissiveIntensity:mt.type>=4?1.2:0.4,roughness:0.2,metalness:0.8})
@@ -332,7 +299,7 @@ function spawnMineral(z){
   mesh.rotation.set(Math.random(),Math.random(),Math.random());
   mesh.castShadow=true; scene.add(mesh);
   if(mt.type>=4){
-    const pl=new THREE.PointLight(mt.color,1.5,3.5);
+    const pl=new THREE.PointLight(mt.color,1.5,4);
     pl.position.copy(mesh.position); scene.add(pl);
     mesh.userData.light=pl;
   }
@@ -400,7 +367,7 @@ function loadCharacter(onDone){
 
 // ─── ESTADO ───────────────────────────────────────────────────
 const playerPos=new THREE.Vector3(0,0,0);
-const SPEED=0.07;
+const SPEED=0.08;
 const gameState={hp:100,hpMax:100,xp:0,xpMax:100,coins:0,depth:0,animState:'idle'};
 const inventory={1:0,2:0,3:0,4:0,5:0};
 const keys={};
@@ -420,7 +387,7 @@ let mineTimer=0;
 function tryMine(){
   for(let i=minerals.length-1;i>=0;i--){
     const m=minerals[i]; if(!m.active) continue;
-    if(playerPos.distanceTo(m.mesh.position)<1.8){
+    if(playerPos.distanceTo(m.mesh.position)<2.0){
       m.hp--;
       m.mesh.scale.multiplyScalar(0.93);
       spawnParticles3D(m.mesh.position.clone(),m.mesh.material.color);
@@ -440,57 +407,56 @@ function tryMine(){
 }
 
 // ─── UPDATE ───────────────────────────────────────────────────
-// Câmera atual em world yaw (absoluto)
-let camWorldYaw = Math.PI; // começa atrás do personagem (personagem olha para Z-)
-
 function update(){
   let moving=false;
 
-  // Direção de movimento relativa à câmera
-  // fwd = direção para onde a câmera aponta (para onde o personagem vai ao apertar W)
-  const fwd   = new THREE.Vector3(Math.sin(camWorldYaw), 0, Math.cos(camWorldYaw));
-  const right  = new THREE.Vector3(Math.cos(camWorldYaw), 0, -Math.sin(camWorldYaw));
+  // Frente do personagem = direção que ele está olhando
+  // charYaw define para onde o personagem aponta
+  const fwd   = new THREE.Vector3(-Math.sin(charYaw), 0, -Math.cos(charYaw));
+  const right  = new THREE.Vector3( Math.cos(charYaw), 0, -Math.sin(charYaw));
 
-  if(keys['ArrowUp']   ||keys['w']||keys['W']){playerPos.addScaledVector(fwd,  SPEED);   moving=true;}
-  if(keys['ArrowDown'] ||keys['s']||keys['S']){playerPos.addScaledVector(fwd, -SPEED*0.6);moving=true;}
-  if(keys['ArrowLeft'] ||keys['a']||keys['A']){playerPos.addScaledVector(right,-SPEED*0.8);moving=true;}
-  if(keys['ArrowRight']||keys['d']||keys['D']){playerPos.addScaledVector(right, SPEED*0.8);moving=true;}
+  if(keys['ArrowUp']   ||keys['w']||keys['W']){ playerPos.addScaledVector(fwd,   SPEED);    moving=true; }
+  if(keys['ArrowDown'] ||keys['s']||keys['S']){ playerPos.addScaledVector(fwd,  -SPEED*0.6);moving=true; }
+  if(keys['ArrowLeft'] ||keys['a']||keys['A']){ playerPos.addScaledVector(right, -SPEED*0.8);moving=true; }
+  if(keys['ArrowRight']||keys['d']||keys['D']){ playerPos.addScaledVector(right,  SPEED*0.8);moving=true; }
 
-  // Limites da caverna
-  playerPos.x=Math.max(-(CAVE_WIDTH/2-0.45),Math.min(CAVE_WIDTH/2-0.45,playerPos.x));
-  playerPos.z=Math.min(0.5,Math.max(-(CAVE_LENGTH-4),playerPos.z));
+  // Limites — usa CAVE_WIDTH para manter dentro das paredes
+  const margin = 0.5;
+  playerPos.x = Math.max(-(CAVE_WIDTH/2-margin), Math.min(CAVE_WIDTH/2-margin, playerPos.x));
+  playerPos.z = Math.min(0.5, Math.max(-(CAVE_LENGTH-4), playerPos.z));
 
   charGroup.position.copy(playerPos);
 
-  // Personagem aponta na direção do movimento (mesma que câmera)
-  if(moving){
-    charGroup.rotation.y = camWorldYaw + Math.PI;
-  }
+  // Personagem sempre aponta na sua direção (charYaw)
+  charGroup.rotation.y = charYaw;
 
-  // Câmera orbital limitada a 180° atrás do personagem
-  // camWorldYaw é atualizado pelo drag, mas limitado
-  camWorldYaw = Math.PI + cam.yawOffset;
+  // Câmera fica ATRÁS do personagem + offset do trackpad
+  // O yaw da câmera é o oposto do charYaw (+ offset do drag)
+  const camYaw = charYaw + Math.PI + cam.yawOffset;
 
-  // Posição da câmera baseada no yaw mundial + pitch
-  const camX = playerPos.x + cam.dist * Math.sin(camWorldYaw) * Math.cos(cam.pitch);
-  const camY = playerPos.y + cam.dist * Math.sin(cam.pitch) + 0.4;
-  const camZ = playerPos.z + cam.dist * Math.cos(camWorldYaw) * Math.cos(cam.pitch);
+  // Posição da câmera
+  const cx = playerPos.x + cam.dist * Math.sin(camYaw) * Math.cos(cam.pitch);
+  const cy = playerPos.y + cam.dist * Math.sin(cam.pitch) + 0.4;
+  const cz = playerPos.z + cam.dist * Math.cos(camYaw) * Math.cos(cam.pitch);
 
-  camera.position.lerp(new THREE.Vector3(camX,camY,camZ),0.08);
+  // Clamp da câmera dentro das paredes (com margem extra)
+  const camClampX = Math.max(-(CAVE_WIDTH/2-0.3), Math.min(CAVE_WIDTH/2-0.3, cx));
+  const camClampZ = Math.min(1.0, Math.max(-(CAVE_LENGTH-2), cz));
+
+  camera.position.lerp(new THREE.Vector3(camClampX, cy, camClampZ), 0.08);
   camera.lookAt(playerPos.x, playerPos.y+0.7, playerPos.z);
 
   // Lanterna aponta para frente do personagem
-  const fwdChar = new THREE.Vector3(Math.sin(camWorldYaw+Math.PI), 0, Math.cos(camWorldYaw+Math.PI));
-  lantern.position.set(playerPos.x,playerPos.y+1.1,playerPos.z);
+  lantern.position.set(playerPos.x, playerPos.y+1.1, playerPos.z);
   lantern.target.position.set(
-    playerPos.x + fwdChar.x*6,
+    playerPos.x + fwd.x*8,
     playerPos.y+0.3,
-    playerPos.z + fwdChar.z*6
+    playerPos.z + fwd.z*8
   );
   lantern.target.updateMatrixWorld();
 
-  purpleLight.position.set(playerPos.x,playerPos.y+0.8,playerPos.z+(cam.dist*0.6));
-  groundGlow.position.set(playerPos.x,0.1,playerPos.z);
+  purpleLight.position.set(playerPos.x, playerPos.y+0.8, playerPos.z + cam.dist*0.5*Math.cos(cam.pitch));
+  groundGlow.position.set(playerPos.x, 0.1, playerPos.z);
 
   // Animação
   if(keys['z']||keys['Z']){
