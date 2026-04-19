@@ -18,12 +18,27 @@
       position: relative;
       width: 390px;
       height: 700px;
+      overflow: hidden;
     }
-    canvas {
+    #bg-img {
       position: absolute;
       top: 0; left: 0;
-      display: block;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      z-index: 0;
+    }
+    #three-canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
       z-index: 1;
+      pointer-events: none;
+    }
+    #game-canvas {
+      position: absolute;
+      top: 0; left: 0;
+      z-index: 2;
+      pointer-events: none;
     }
     #hud {
       position: absolute;
@@ -33,29 +48,52 @@
       justify-content: space-between;
       align-items: center;
       padding: 10px 16px;
-      background: rgba(8, 13, 24, 0.88);
-      border-bottom: 1px solid rgba(29, 158, 117, 0.3);
+      background: rgba(8,13,24,0.88);
+      border-bottom: 1px solid rgba(29,158,117,0.3);
       font-family: monospace;
       font-size: 12px;
       color: #5a6a8a;
       pointer-events: none;
-      z-index: 2;
+      z-index: 3;
     }
     .hud-block { display: flex; flex-direction: column; gap: 3px; }
     .hud-label { font-size: 9px; color: #3a4a6a; text-transform: uppercase; letter-spacing: 1px; }
     .hud-value { color: #1D9E75; font-size: 13px; font-weight: bold; }
     .hud-bar-wrap { width: 80px; height: 6px; background: #1a2035; border-radius: 3px; overflow: hidden; }
     .hud-bar { height: 100%; border-radius: 3px; transition: width 0.2s; }
-    #bar-hp { background: #1D9E75; width: 100%; }
-    #bar-xp { background: #7F77DD; width: 0%; }
+    #bar-hp  { background: #1D9E75; width: 100%; }
+    #bar-xp  { background: #7F77DD; width: 0%; }
     #hud-coins { color: #EF9F27; }
     #hud-depth { color: #1D9E75; }
+    #loading-screen {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: #080d18;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      z-index: 10; gap: 16px;
+      font-family: monospace; color: #1D9E75;
+    }
+    #loading-bar-wrap {
+      width: 200px; height: 4px;
+      background: #1a2035; border-radius: 2px; overflow: hidden;
+    }
+    #loading-bar {
+      height: 100%; background: #1D9E75;
+      border-radius: 2px; width: 0%;
+      transition: width 0.3s;
+    }
+    #loading-text { font-size: 12px; color: #5a6a8a; }
   </style>
 </head>
 <body>
 
 <div id="game-wrapper">
-  <canvas id="gameCanvas" width="390" height="700"></canvas>
+
+  <img id="bg-img" src="assets/bg-corridor.jpg" alt="">
+
+  <canvas id="three-canvas"></canvas>
+  <canvas id="game-canvas" width="390" height="700"></canvas>
 
   <div id="hud">
     <div class="hud-block">
@@ -75,93 +113,229 @@
       <span class="hud-value" id="hud-depth">0m</span>
     </div>
   </div>
+
+  <div id="loading-screen">
+    <div style="font-size:18px;font-weight:bold">DEEPVAULT</div>
+    <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
+    <div id="loading-text">Iniciando...</div>
+  </div>
+
 </div>
 
-<script>
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-const W = 390;
-const H = 700;
-
-function resize() {
-  const scale = Math.min(window.innerWidth / W, window.innerHeight / H);
-  const wrapper = document.getElementById('game-wrapper');
-  wrapper.style.transform = `scale(${scale})`;
-  wrapper.style.transformOrigin = 'center center';
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
 }
-resize();
-window.addEventListener('resize', resize);
+</script>
 
-const state = {
-  hp: 100, hpMax: 100,
-  xp: 0, xpMax: 100,
-  coins: 0,
-  depth: 0,
-  cameraY: 0,
+<script type="module">
+import * as THREE from 'three';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+
+const W = 390, H = 700;
+const PREFIX = 'Meshy_AI_Person1_biped_';
+const BASE = 'assets/characters/player/';
+
+// Mapa de animações confirmado
+const ANIM_MAP = {
+  idle:    { path: BASE + 'idle/respire-fundo-e-olhe-ao-redor/', index: 2 },
+  walk:    { path: BASE + 'movement/caminhando/',                index: 4 },
+  run:     { path: BASE + 'movement/corrida/',                   index: 4 },
+  mine:    { path: BASE + 'mining/minerando/',                   index: 9 },
+  collect: { path: BASE + 'collect/coletando-item/',             index: 0 },
+  death:   { path: BASE + 'death/morte/',                        index: 0 },
 };
 
-const images = {};
-const toLoad = [
-  ['bg',      'assets/bg-corridor.jpg'],
-  ['front',   'assets/player/front.png'],
-  ['back',    'assets/player/back.png'],
-  ['left',    'assets/player/left.png'],
-  ['right',   'assets/player/right.png'],
-  ['mining',  'assets/player/mining.png'],
-  ['collect', 'assets/player/collect.png'],
-  ['hit',     'assets/player/hit.png'],
-  ['victory', 'assets/player/victory.png'],
-];
+// ─── LOADING ──────────────────────────────────────────────────
+function setLoading(pct, msg) {
+  document.getElementById('loading-bar').style.width = pct + '%';
+  document.getElementById('loading-text').textContent = msg;
+}
+function hideLoading() {
+  document.getElementById('loading-screen').style.display = 'none';
+}
 
-let loadedCount = 0;
-function loadAssets(callback) {
-  toLoad.forEach(([key, src]) => {
-    const img = new Image();
-    img.src = src;
-    img.onload = () => { loadedCount++; if (loadedCount === toLoad.length) callback(); };
-    img.onerror = () => { loadedCount++; if (loadedCount === toLoad.length) callback(); };
-    images[key] = img;
+// ─── THREE.JS SETUP ───────────────────────────────────────────
+const threeCanvas = document.getElementById('three-canvas');
+threeCanvas.width  = W;
+threeCanvas.height = H;
+
+const renderer = new THREE.WebGLRenderer({
+  canvas: threeCanvas,
+  alpha: true,          // fundo transparente — deixa o bg-img aparecer
+  antialias: true,
+});
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.setClearColor(0x000000, 0); // transparente
+
+const scene = new THREE.Scene();
+
+// Câmera posicionada atrás e levemente acima — ângulo do corredor
+const camera = new THREE.PerspectiveCamera(40, W / H, 0.1, 50);
+camera.position.set(0, 1.8, 4);
+camera.lookAt(0, 0.6, 0);
+
+// Luzes
+scene.add(new THREE.AmbientLight(0x1a2a4a, 2.5));
+const dirLight = new THREE.DirectionalLight(0x4adbb8, 2);
+dirLight.position.set(1, 4, 3);
+dirLight.castShadow = true;
+scene.add(dirLight);
+const fillLight = new THREE.PointLight(0x7F77DD, 1.5, 8);
+fillLight.position.set(-2, 1.5, 1);
+scene.add(fillLight);
+const groundGlow = new THREE.PointLight(0x1D9E75, 0.8, 3);
+groundGlow.position.set(0, 0.1, 0.5);
+scene.add(groundGlow);
+
+// ─── PERSONAGEM 3D ────────────────────────────────────────────
+const fbxLoader = new FBXLoader();
+const texLoader  = new THREE.TextureLoader();
+
+let mixer   = null;
+let actions = {};
+let currentAction = null;
+let character = null;
+
+function loadTextures(path) {
+  return {
+    map:      texLoader.load(path + PREFIX + 'texture_0.png'),
+    normal:   texLoader.load(path + PREFIX + 'texture_0_normal.png'),
+    rough:    texLoader.load(path + PREFIX + 'texture_0_roughness.png'),
+    metallic: texLoader.load(path + PREFIX + 'texture_0_metallic.png'),
+  };
+}
+
+function applyMaterial(model, textures) {
+  model.traverse(c => {
+    if (c.isMesh) {
+      c.castShadow = true;
+      c.material = new THREE.MeshStandardMaterial({
+        map:         textures.map,
+        normalMap:   textures.normal,
+        roughnessMap:textures.rough,
+        metalnessMap:textures.metallic,
+        roughness: 0.65,
+        metalness: 0.35,
+      });
+    }
   });
 }
 
-const TILE = 40;
-const player = {
-  x: W / 2,
-  y: H * 0.72,
-  w: 80, h: 100,
+function loadAnimation(name, callback) {
+  const anim = ANIM_MAP[name];
+  if (!anim) return;
+  fbxLoader.load(anim.path + PREFIX + 'Meshy_AI_Meshy_Merged_Animations.fbx', (fbx) => {
+    const clip   = fbx.animations[anim.index];
+    if (!clip) return;
+    const action = mixer.clipAction(clip);
+    actions[name] = action;
+    if (callback) callback(action);
+  });
+}
+
+function playAnim(name, fadeTime = 0.3) {
+  const next = actions[name];
+  if (!next || next === currentAction) return;
+  if (currentAction) currentAction.fadeOut(fadeTime);
+  next.reset().fadeIn(fadeTime).play();
+  currentAction = next;
+}
+
+function loadCharacter(onDone) {
+  const idlePath = ANIM_MAP.idle.path;
+  setLoading(20, 'Carregando personagem...');
+
+  fbxLoader.load(idlePath + PREFIX + 'Character_output.fbx', (fbx) => {
+    fbx.scale.setScalar(0.012);
+    fbx.position.set(0, 0, 0);
+    fbx.rotation.y = Math.PI; // vira de costas para a câmera
+
+    const textures = loadTextures(idlePath);
+    applyMaterial(fbx, textures);
+
+    scene.add(fbx);
+    character = fbx;
+    mixer = new THREE.AnimationMixer(fbx);
+
+    setLoading(50, 'Carregando animações...');
+
+    // Carrega idle primeiro
+    loadAnimation('idle', (action) => {
+      action.play();
+      currentAction = action;
+      setLoading(70, 'Carregando walk...');
+
+      // Carrega walk
+      loadAnimation('walk', () => {
+        setLoading(85, 'Carregando mining...');
+
+        // Carrega mine
+        loadAnimation('mine', () => {
+          setLoading(100, 'Pronto!');
+          setTimeout(() => {
+            hideLoading();
+            if (onDone) onDone();
+          }, 300);
+        });
+      });
+    });
+
+  }, (xhr) => {
+    const pct = Math.round(xhr.loaded / xhr.total * 20);
+    setLoading(pct, 'Carregando modelo...');
+  });
+}
+
+// ─── GAME STATE ───────────────────────────────────────────────
+const state = {
+  hp: 100, hpMax: 100,
+  xp: 0,  xpMax: 100,
+  coins: 0,
+  depth: 0,
+  cameraY: 0,
+  playerX: W / 2,
+  playerY: H * 0.72,
   speed: 3,
   facing: 'back',
-  state: 'idle',
-  stateTimer: 0,
+  animState: 'idle',
 };
 
 const keys = {};
-window.addEventListener('keydown', e => keys[e.key] = true);
-window.addEventListener('keyup',   e => keys[e.key] = false);
+window.addEventListener('keydown', e => { keys[e.key] = true; e.preventDefault(); });
+window.addEventListener('keyup',   e => { keys[e.key] = false; });
 
+// ─── BLOCOS ───────────────────────────────────────────────────
+const TILE = 40;
 const BLOCK_COLORS    = { 1:'#111827', 2:'#1a1f2e', 3:'#1a1e10', 4:'#0d2e24', 5:'#1a1230' };
 const BLOCK_ACCENTS   = { 3:'#BA7517', 4:'#1D9E75', 5:'#7F77DD' };
 const BLOCK_COLORS_INV= { 1:'#888780', 2:'#5a6a8a', 3:'#EF9F27', 4:'#1D9E75', 5:'#7F77DD' };
 const BLOCK_HP        = { 1:3, 2:2, 3:5, 4:8, 5:12 };
 const BLOCK_RARITIES  = [1,1,1,1,1,1,2,2,2,3,3,4,5];
 const corridorW = 110;
-const wallW = (W - corridorW) / 2;
+const wallW     = (W - corridorW) / 2;
 
 const blocks = [];
 function generateBlocks() {
   blocks.length = 0;
   for (let row = 0; row < 80; row++) {
     for (let col = 0; col < 2; col++) {
-      const type = BLOCK_RARITIES[Math.floor(Math.random() * BLOCK_RARITIES.length)];
-      blocks.push({ x: col * TILE, y: row * TILE, w: TILE, h: TILE, type, hp: BLOCK_HP[type], maxHp: BLOCK_HP[type] });
+      const t = BLOCK_RARITIES[Math.floor(Math.random() * BLOCK_RARITIES.length)];
+      blocks.push({ x: col * TILE, y: row * TILE, w: TILE, h: TILE, type: t, hp: BLOCK_HP[t], maxHp: BLOCK_HP[t] });
     }
     for (let col = 0; col < 2; col++) {
-      const type = BLOCK_RARITIES[Math.floor(Math.random() * BLOCK_RARITIES.length)];
-      blocks.push({ x: W - wallW + col * TILE, y: row * TILE, w: TILE, h: TILE, type, hp: BLOCK_HP[type], maxHp: BLOCK_HP[type] });
+      const t = BLOCK_RARITIES[Math.floor(Math.random() * BLOCK_RARITIES.length)];
+      blocks.push({ x: W - wallW + col * TILE, y: row * TILE, w: TILE, h: TILE, type: t, hp: BLOCK_HP[t], maxHp: BLOCK_HP[t] });
     }
   }
 }
 
+// ─── PARTÍCULAS ───────────────────────────────────────────────
 const particles = [];
 function spawnParticles(x, y, color) {
   for (let i = 0; i < 8; i++) {
@@ -176,10 +350,11 @@ function spawnParticles(x, y, color) {
 }
 
 const inventory = { 1:0, 2:0, 3:0, 4:0, 5:0 };
+let mineTimer = 0;
 
 function mineNearbyBlock() {
-  const px = player.x;
-  const py = player.y + state.cameraY;
+  const px = state.playerX;
+  const py = state.playerY + state.cameraY;
   const reach = 90;
   for (let i = blocks.length - 1; i >= 0; i--) {
     const b = blocks[i];
@@ -193,80 +368,17 @@ function mineNearbyBlock() {
         state.coins += reward[b.type];
         state.xp = Math.min(state.xpMax, state.xp + reward[b.type]);
         blocks.splice(i, 1);
-        player.state = 'collect';
-        player.stateTimer = 40;
       }
       break;
     }
   }
 }
 
-function update() {
-  if (player.stateTimer > 0) {
-    player.stateTimer--;
-    if (player.stateTimer === 0) player.state = 'idle';
-  }
+// ─── 2D CANVAS ────────────────────────────────────────────────
+const canvas2d = document.getElementById('game-canvas');
+const ctx = canvas2d.getContext('2d');
 
-  if (keys['ArrowUp'] || keys['w'] || keys['W'])    { player.y -= player.speed; player.facing = 'back'; }
-  if (keys['ArrowDown'] || keys['s'] || keys['S'])  { player.y += player.speed; player.facing = 'front'; }
-  if (keys['ArrowLeft'] || keys['a'] || keys['A'])  { player.x -= player.speed; player.facing = 'left'; }
-  if (keys['ArrowRight'] || keys['d'] || keys['D']) { player.x += player.speed; player.facing = 'right'; }
-
-  player.x = Math.max(wallW + player.w/2, Math.min(W - wallW - player.w/2, player.x));
-
-  const targetCamY = player.y - H * 0.72;
-  state.cameraY += (targetCamY - state.cameraY) * 0.06;
-  if (state.cameraY < 0) state.cameraY = 0;
-
-  state.depth = Math.floor(state.cameraY / 10);
-  document.getElementById('hud-depth').textContent = state.depth + 'm';
-
-  if ((keys['z'] || keys['Z']) && player.state !== 'mining') {
-    player.state = 'mining';
-    player.stateTimer = 30;
-    mineNearbyBlock();
-  }
-
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
-    p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.life -= 0.035;
-    if (p.life <= 0) particles.splice(i, 1);
-  }
-
-  document.getElementById('bar-hp').style.width = (state.hp / state.hpMax * 100) + '%';
-  document.getElementById('bar-xp').style.width = (state.xp / state.xpMax * 100) + '%';
-  document.getElementById('hud-coins').textContent = state.coins;
-}
-
-function draw() {
-  ctx.clearRect(0, 0, W, H);
-
-  // Background — imagem estática repetida verticalmente
-  if (images.bg && images.bg.complete && images.bg.naturalWidth > 0) {
-    const bgH = images.bg.naturalHeight * (W / images.bg.naturalWidth);
-    const offsetY = -(state.cameraY % bgH);
-    ctx.drawImage(images.bg, 0, offsetY, W, bgH);
-    ctx.drawImage(images.bg, 0, offsetY + bgH, W, bgH);
-    ctx.drawImage(images.bg, 0, offsetY - bgH, W, bgH);
-  } else {
-    ctx.fillStyle = '#080d18';
-    ctx.fillRect(0, 0, W, H);
-  }
-
-  // Paredes laterais
-  ctx.fillStyle = 'rgba(6, 9, 15, 0.82)';
-  ctx.fillRect(0, 0, wallW, H);
-  ctx.fillRect(W - wallW, 0, wallW, H);
-
-  // Bordas do corredor
-  ctx.strokeStyle = 'rgba(29, 158, 117, 0.12)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(wallW, 0); ctx.lineTo(wallW, H);
-  ctx.moveTo(W - wallW, 0); ctx.lineTo(W - wallW, H);
-  ctx.stroke();
-
-  // Blocos
+function drawBlocks() {
   blocks.forEach(b => {
     const drawY = b.y - state.cameraY;
     if (drawY > H + TILE || drawY < -TILE) return;
@@ -291,8 +403,9 @@ function draw() {
       ctx.fillRect(b.x, drawY + b.h - 5, b.w * pct, 4);
     }
   });
+}
 
-  // Partículas
+function drawParticles() {
   particles.forEach(p => {
     ctx.globalAlpha = p.life;
     ctx.fillStyle = p.color;
@@ -301,35 +414,32 @@ function draw() {
     ctx.fill();
     ctx.globalAlpha = 1;
   });
+}
 
-  // Personagem sprite 2D
-  const spriteKey = player.state !== 'idle' ? player.state : player.facing;
-  const sprite = images[spriteKey];
-  const drawX = player.x - player.w / 2;
-  const drawY = player.y - player.h / 2;
-  if (sprite && sprite.complete && sprite.naturalWidth > 0) {
-    ctx.drawImage(sprite, drawX, drawY, player.w, player.h);
-  } else {
-    ctx.fillStyle = '#1D9E75';
-    ctx.fillRect(drawX + 12, drawY, player.w - 24, player.h * 0.42);
-    ctx.fillStyle = '#0d1220';
-    ctx.fillRect(drawX, drawY + player.h * 0.42, player.w, player.h * 0.58);
-  }
+function drawWalls() {
+  ctx.fillStyle = 'rgba(6,9,15,0.82)';
+  ctx.fillRect(0, 0, wallW, H);
+  ctx.fillRect(W - wallW, 0, wallW, H);
+  ctx.strokeStyle = 'rgba(29,158,117,0.1)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(wallW, 0); ctx.lineTo(wallW, H);
+  ctx.moveTo(W - wallW, 0); ctx.lineTo(W - wallW, H);
+  ctx.stroke();
+}
 
-  // Névoa inferior
-  const grad = ctx.createLinearGradient(0, H * 0.6, 0, H);
+function drawFog() {
+  const grad = ctx.createLinearGradient(0, H * 0.55, 0, H);
   grad.addColorStop(0, 'rgba(8,13,24,0)');
-  grad.addColorStop(1, 'rgba(8,13,24,0.35)');
+  grad.addColorStop(1, 'rgba(8,13,24,0.4)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
-
-  drawInventory();
 }
 
 function drawInventory() {
   const panelH = 64;
   const panelY = H - panelH;
-  ctx.fillStyle = 'rgba(8,13,24,0.9)';
+  ctx.fillStyle = 'rgba(8,13,24,0.92)';
   ctx.fillRect(0, panelY, W, panelH);
   ctx.strokeStyle = 'rgba(29,158,117,0.2)';
   ctx.lineWidth = 1;
@@ -366,14 +476,102 @@ function drawInventory() {
   ctx.textAlign = 'left';
 }
 
-function loop() {
-  update();
-  draw();
-  requestAnimationFrame(loop);
+// ─── UPDATE ───────────────────────────────────────────────────
+function update(delta) {
+  let moving = false;
+
+  if (keys['ArrowUp'] || keys['w'] || keys['W'])    { state.playerY -= state.speed; moving = true; }
+  if (keys['ArrowDown'] || keys['s'] || keys['S'])  { state.playerY += state.speed; moving = true; }
+  if (keys['ArrowLeft'] || keys['a'] || keys['A'])  { state.playerX -= state.speed; moving = true; }
+  if (keys['ArrowRight'] || keys['d'] || keys['D']) { state.playerX += state.speed; moving = true; }
+
+  state.playerX = Math.max(wallW + 40, Math.min(W - wallW - 40, state.playerX));
+
+  // Câmera segue jogador
+  const targetCamY = state.playerY - H * 0.72;
+  state.cameraY += (targetCamY - state.cameraY) * 0.06;
+  if (state.cameraY < 0) state.cameraY = 0;
+  state.depth = Math.floor(state.cameraY / 10);
+
+  // Mineração
+  if (keys['z'] || keys['Z']) {
+    mineTimer++;
+    if (mineTimer % 20 === 1) mineNearbyBlock();
+    state.animState = 'mine';
+  } else {
+    mineTimer = 0;
+    state.animState = moving ? 'walk' : 'idle';
+  }
+
+  // Sincroniza animação 3D com estado
+  if (actions[state.animState]) {
+    playAnim(state.animState);
+  }
+
+  // Move personagem 3D horizontalmente conforme jogador se move
+  if (character) {
+    // Mapeia posição X do jogador (wallW..W-wallW) para posição 3D (-0.8..0.8)
+    const normalized = (state.playerX - W/2) / (corridorW / 2);
+    character.position.x += (normalized * 0.6 - character.position.x) * 0.1;
+  }
+
+  // Partículas
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.life -= 0.04;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // HUD
+  document.getElementById('bar-hp').style.width    = (state.hp / state.hpMax * 100) + '%';
+  document.getElementById('bar-xp').style.width    = (state.xp / state.xpMax * 100) + '%';
+  document.getElementById('hud-coins').textContent = state.coins;
+  document.getElementById('hud-depth').textContent = state.depth + 'm';
+
+  // Pulso na luz de chão
+  if (groundGlow) groundGlow.intensity = 0.6 + Math.sin(Date.now() * 0.002) * 0.2;
 }
 
+// ─── RESIZE ───────────────────────────────────────────────────
+function resize() {
+  const scale = Math.min(window.innerWidth / W, window.innerHeight / H);
+  const wrapper = document.getElementById('game-wrapper');
+  wrapper.style.transform = `scale(${scale})`;
+  wrapper.style.transformOrigin = 'center center';
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── GAME LOOP ────────────────────────────────────────────────
+const clock = new THREE.Clock();
+function loop() {
+  requestAnimationFrame(loop);
+  const delta = clock.getDelta();
+
+  // Atualiza animação 3D
+  if (mixer) mixer.update(delta);
+
+  // Update lógica
+  update(delta);
+
+  // Desenha canvas 2D
+  ctx.clearRect(0, 0, W, H);
+  drawWalls();
+  drawBlocks();
+  drawParticles();
+  drawFog();
+  drawInventory();
+
+  // Renderiza Three.js
+  renderer.render(scene, camera);
+}
+
+// ─── INIT ─────────────────────────────────────────────────────
 generateBlocks();
-loadAssets(() => { loop(); });
+setLoading(10, 'Preparando cena...');
+loadCharacter(() => {
+  loop();
+});
 </script>
 
 </body>
