@@ -14,26 +14,40 @@
       height: 100vh;
       overflow: hidden;
     }
+    #game-wrapper {
+      position: relative;
+      width: 390px;
+      height: 700px;
+    }
+    #bg-video {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 0;
+    }
     canvas {
+      position: absolute;
+      top: 0; left: 0;
       display: block;
-      image-rendering: pixelated;
+      z-index: 1;
     }
     #hud {
       position: absolute;
-      top: 0;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 390px;
+      top: 0; left: 0;
+      width: 100%;
       display: flex;
       justify-content: space-between;
       align-items: center;
       padding: 10px 16px;
-      background: rgba(8, 13, 24, 0.92);
+      background: rgba(8, 13, 24, 0.88);
       border-bottom: 1px solid rgba(29, 158, 117, 0.3);
       font-family: monospace;
       font-size: 12px;
       color: #5a6a8a;
       pointer-events: none;
+      z-index: 2;
     }
     .hud-block { display: flex; flex-direction: column; gap: 3px; }
     .hud-label { font-size: 9px; color: #3a4a6a; text-transform: uppercase; letter-spacing: 1px; }
@@ -48,45 +62,50 @@
 </head>
 <body>
 
-<div id="hud">
-  <div class="hud-block">
-    <span class="hud-label">HP</span>
-    <div class="hud-bar-wrap"><div class="hud-bar" id="bar-hp"></div></div>
-  </div>
-  <div class="hud-block">
-    <span class="hud-label">XP</span>
-    <div class="hud-bar-wrap"><div class="hud-bar" id="bar-xp"></div></div>
-  </div>
-  <div class="hud-block">
-    <span class="hud-label">Moedas</span>
-    <span class="hud-value" id="hud-coins">0</span>
-  </div>
-  <div class="hud-block">
-    <span class="hud-label">Profundidade</span>
-    <span class="hud-value" id="hud-depth">0m</span>
-  </div>
-</div>
+<div id="game-wrapper">
 
-<canvas id="gameCanvas"></canvas>
+  <video id="bg-video" autoplay muted loop playsinline>
+    <source src="assets/bg-corridor.webm" type="video/webm">
+  </video>
+
+  <canvas id="gameCanvas" width="390" height="700"></canvas>
+
+  <div id="hud">
+    <div class="hud-block">
+      <span class="hud-label">HP</span>
+      <div class="hud-bar-wrap"><div class="hud-bar" id="bar-hp"></div></div>
+    </div>
+    <div class="hud-block">
+      <span class="hud-label">XP</span>
+      <div class="hud-bar-wrap"><div class="hud-bar" id="bar-xp"></div></div>
+    </div>
+    <div class="hud-block">
+      <span class="hud-label">Moedas</span>
+      <span class="hud-value" id="hud-coins">0</span>
+    </div>
+    <div class="hud-block">
+      <span class="hud-label">Profundidade</span>
+      <span class="hud-value" id="hud-depth">0m</span>
+    </div>
+  </div>
+
+</div>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-
 const W = 390;
 const H = 700;
-canvas.width = W;
-canvas.height = H;
 
 function resize() {
   const scale = Math.min(window.innerWidth / W, window.innerHeight / H);
-  canvas.style.width = W * scale + 'px';
-  canvas.style.height = H * scale + 'px';
+  const wrapper = document.getElementById('game-wrapper');
+  wrapper.style.transform = `scale(${scale})`;
+  wrapper.style.transformOrigin = 'center center';
 }
 resize();
 window.addEventListener('resize', resize);
 
-// ─── ESTADO DO JOGO ───────────────────────────────────────────
 const state = {
   hp: 100, hpMax: 100,
   xp: 0, xpMax: 100,
@@ -95,10 +114,8 @@ const state = {
   cameraY: 0,
 };
 
-// ─── ASSETS ───────────────────────────────────────────────────
 const images = {};
 const toLoad = [
-  ['bg',      'assets/bg-corridor.jpg'],
   ['front',   'assets/player/front.png'],
   ['back',    'assets/player/back.png'],
   ['left',    'assets/player/left.png'],
@@ -114,61 +131,40 @@ function loadAssets(callback) {
   toLoad.forEach(([key, src]) => {
     const img = new Image();
     img.src = src;
-    img.onload = () => {
-      loadedCount++;
-      if (loadedCount === toLoad.length) callback();
-    };
-    img.onerror = () => {
-      loadedCount++;
-      if (loadedCount === toLoad.length) callback();
-    };
+    img.onload = () => { loadedCount++; if (loadedCount === toLoad.length) callback(); };
+    img.onerror = () => { loadedCount++; if (loadedCount === toLoad.length) callback(); };
     images[key] = img;
   });
 }
 
-// ─── PERSONAGEM ───────────────────────────────────────────────
 const TILE = 40;
 const player = {
   x: W / 2,
-  y: H * 0.65,
-  w: 72,
-  h: 90,
+  y: H * 0.72,
+  w: 80,
+  h: 100,
   speed: 3,
   facing: 'back',
   state: 'idle',
   stateTimer: 0,
 };
 
-// ─── INPUT ────────────────────────────────────────────────────
 const keys = {};
 window.addEventListener('keydown', e => keys[e.key] = true);
 window.addEventListener('keyup',   e => keys[e.key] = false);
 
-// ─── BLOCOS ───────────────────────────────────────────────────
-const BLOCK_COLORS = {
-  1: '#111827',
-  2: '#1a1f2e',
-  3: '#1a1e10',
-  4: '#0d2e24',
-  5: '#1a1230',
-};
-const BLOCK_ACCENTS = {
-  3: '#BA7517',
-  4: '#1D9E75',
-  5: '#7F77DD',
-};
-const BLOCK_RARITIES = [1,1,1,1,1,1,2,2,2,3,3,4,5];
-const BLOCK_COLORS_INV = { 1:'#888780', 2:'#5a6a8a', 3:'#EF9F27', 4:'#1D9E75', 5:'#7F77DD' };
-const BLOCK_HP = { 1: 3, 2: 2, 3: 5, 4: 8, 5: 12 };
-
-const corridorW = 120;
+const BLOCK_COLORS    = { 1:'#111827', 2:'#1a1f2e', 3:'#1a1e10', 4:'#0d2e24', 5:'#1a1230' };
+const BLOCK_ACCENTS   = { 3:'#BA7517', 4:'#1D9E75', 5:'#7F77DD' };
+const BLOCK_COLORS_INV= { 1:'#888780', 2:'#5a6a8a', 3:'#EF9F27', 4:'#1D9E75', 5:'#7F77DD' };
+const BLOCK_HP        = { 1:3, 2:2, 3:5, 4:8, 5:12 };
+const BLOCK_RARITIES  = [1,1,1,1,1,1,2,2,2,3,3,4,5];
+const corridorW = 110;
 const wallW = (W - corridorW) / 2;
 
 const blocks = [];
 function generateBlocks() {
   blocks.length = 0;
-  const totalRows = 60;
-  for (let row = 0; row < totalRows; row++) {
+  for (let row = 0; row < 80; row++) {
     for (let col = 0; col < 2; col++) {
       const type = BLOCK_RARITIES[Math.floor(Math.random() * BLOCK_RARITIES.length)];
       blocks.push({ x: col * TILE, y: row * TILE, w: TILE, h: TILE, type, hp: BLOCK_HP[type], maxHp: BLOCK_HP[type] });
@@ -180,29 +176,25 @@ function generateBlocks() {
   }
 }
 
-// ─── PARTÍCULAS ───────────────────────────────────────────────
 const particles = [];
 function spawnParticles(x, y, color) {
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 8; i++) {
     particles.push({
       x, y,
-      vx: (Math.random() - 0.5) * 4,
-      vy: (Math.random() - 0.5) * 4 - 2,
-      life: 1,
-      color,
-      size: 3 + Math.random() * 3,
+      vx: (Math.random() - 0.5) * 5,
+      vy: (Math.random() - 0.5) * 5 - 2,
+      life: 1, color,
+      size: 2 + Math.random() * 4,
     });
   }
 }
 
-// ─── INVENTÁRIO ───────────────────────────────────────────────
 const inventory = { 1:0, 2:0, 3:0, 4:0, 5:0 };
 
-// ─── MINERAÇÃO ────────────────────────────────────────────────
 function mineNearbyBlock() {
   const px = player.x;
   const py = player.y + state.cameraY;
-  const reach = 80;
+  const reach = 90;
   for (let i = blocks.length - 1; i >= 0; i--) {
     const b = blocks[i];
     const dist = Math.hypot(px - (b.x + b.w/2), py - (b.y + b.h/2));
@@ -223,22 +215,28 @@ function mineNearbyBlock() {
   }
 }
 
-// ─── UPDATE ───────────────────────────────────────────────────
+function updateVideoDepth() {
+  const video = document.getElementById('bg-video');
+  if (!video) return;
+  const depthBonus = Math.min(state.depth / 500, 0.4);
+  video.playbackRate = 1.0 + depthBonus;
+}
+
 function update() {
   if (player.stateTimer > 0) {
     player.stateTimer--;
     if (player.stateTimer === 0) player.state = 'idle';
   }
 
-  if (keys['ArrowUp'] || keys['w'] || keys['W']) { player.y -= player.speed; player.facing = 'back'; }
-  if (keys['ArrowDown'] || keys['s'] || keys['S']) { player.y += player.speed; player.facing = 'front'; }
-  if (keys['ArrowLeft'] || keys['a'] || keys['A']) { player.x -= player.speed; player.facing = 'left'; }
+  if (keys['ArrowUp'] || keys['w'] || keys['W'])    { player.y -= player.speed; player.facing = 'back'; }
+  if (keys['ArrowDown'] || keys['s'] || keys['S'])  { player.y += player.speed; player.facing = 'front'; }
+  if (keys['ArrowLeft'] || keys['a'] || keys['A'])  { player.x -= player.speed; player.facing = 'left'; }
   if (keys['ArrowRight'] || keys['d'] || keys['D']) { player.x += player.speed; player.facing = 'right'; }
 
   player.x = Math.max(wallW + player.w/2, Math.min(W - wallW - player.w/2, player.x));
 
-  const targetCamY = player.y - H * 0.65;
-  state.cameraY += (targetCamY - state.cameraY) * 0.08;
+  const targetCamY = player.y - H * 0.72;
+  state.cameraY += (targetCamY - state.cameraY) * 0.06;
   if (state.cameraY < 0) state.cameraY = 0;
 
   state.depth = Math.floor(state.cameraY / 10);
@@ -252,32 +250,29 @@ function update() {
 
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
-    p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.life -= 0.04;
+    p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.life -= 0.035;
     if (p.life <= 0) particles.splice(i, 1);
   }
 
+  updateVideoDepth();
   document.getElementById('bar-hp').style.width = (state.hp / state.hpMax * 100) + '%';
   document.getElementById('bar-xp').style.width = (state.xp / state.xpMax * 100) + '%';
   document.getElementById('hud-coins').textContent = state.coins;
 }
 
-// ─── DRAW ─────────────────────────────────────────────────────
 function draw() {
   ctx.clearRect(0, 0, W, H);
 
-  if (images.bg && images.bg.complete && images.bg.naturalWidth > 0) {
-    const bgH = images.bg.naturalHeight * (W / images.bg.naturalWidth);
-    const offsetY = -(state.cameraY % bgH);
-    ctx.drawImage(images.bg, 0, offsetY, W, bgH);
-    ctx.drawImage(images.bg, 0, offsetY + bgH, W, bgH);
-    ctx.drawImage(images.bg, 0, offsetY - bgH, W, bgH);
-  } else {
-    ctx.fillStyle = '#080d18';
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#0d1220';
-    ctx.fillRect(0, 0, wallW, H);
-    ctx.fillRect(W - wallW, 0, wallW, H);
-  }
+  ctx.fillStyle = 'rgba(6, 9, 15, 0.82)';
+  ctx.fillRect(0, 0, wallW, H);
+  ctx.fillRect(W - wallW, 0, wallW, H);
+
+  ctx.strokeStyle = 'rgba(29, 158, 117, 0.12)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(wallW, 0); ctx.lineTo(wallW, H);
+  ctx.moveTo(W - wallW, 0); ctx.lineTo(W - wallW, H);
+  ctx.stroke();
 
   blocks.forEach(b => {
     const drawY = b.y - state.cameraY;
@@ -289,7 +284,7 @@ function draw() {
       ctx.lineWidth = 1;
       ctx.strokeRect(b.x + 2, drawY + 2, b.w - 5, b.h - 5);
       ctx.fillStyle = BLOCK_ACCENTS[b.type];
-      ctx.globalAlpha = 0.4;
+      ctx.globalAlpha = 0.45;
       ctx.beginPath();
       ctx.arc(b.x + b.w/2, drawY + b.h/2, 5, 0, Math.PI*2);
       ctx.fill();
@@ -321,36 +316,34 @@ function draw() {
     ctx.drawImage(sprite, drawX, drawY, player.w, player.h);
   } else {
     ctx.fillStyle = '#1D9E75';
-    ctx.fillRect(drawX + 10, drawY, player.w - 20, player.h * 0.45);
+    ctx.fillRect(drawX + 12, drawY, player.w - 24, player.h * 0.42);
     ctx.fillStyle = '#0d1220';
-    ctx.fillRect(drawX, drawY + player.h * 0.45, player.w, player.h * 0.55);
+    ctx.fillRect(drawX, drawY + player.h * 0.42, player.w, player.h * 0.58);
   }
 
-  drawInventory();
-
-  const grad = ctx.createLinearGradient(0, H * 0.1, 0, H);
+  const grad = ctx.createLinearGradient(0, H * 0.6, 0, H);
   grad.addColorStop(0, 'rgba(8,13,24,0)');
-  grad.addColorStop(1, 'rgba(8,13,24,0.25)');
+  grad.addColorStop(1, 'rgba(8,13,24,0.35)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
+
+  drawInventory();
 }
 
 function drawInventory() {
   const panelH = 64;
   const panelY = H - panelH;
-  ctx.fillStyle = 'rgba(8,13,24,0.88)';
+  ctx.fillStyle = 'rgba(8,13,24,0.9)';
   ctx.fillRect(0, panelY, W, panelH);
   ctx.strokeStyle = 'rgba(29,158,117,0.2)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(0, panelY);
-  ctx.lineTo(W, panelY);
+  ctx.moveTo(0, panelY); ctx.lineTo(W, panelY);
   ctx.stroke();
 
   const types = [1,2,3,4,5];
   const slotW = 56;
   const startX = (W - types.length * slotW) / 2;
-
   types.forEach((type, i) => {
     const sx = startX + i * slotW;
     const sy = panelY + 8;
@@ -377,7 +370,6 @@ function drawInventory() {
   ctx.textAlign = 'left';
 }
 
-// ─── GAME LOOP ────────────────────────────────────────────────
 function loop() {
   update();
   draw();
