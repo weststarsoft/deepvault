@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>DeepVault — Animações</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #080d18; overflow: hidden; font-family: monospace; }
+    #info {
+      position: absolute;
+      top: 16px; left: 16px;
+      font-size: 12px; color: #1D9E75;
+      line-height: 1.8; pointer-events: none; z-index: 10;
+    }
+    #anims {
+      position: absolute;
+      bottom: 16px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; gap: 8px; flex-wrap: wrap;
+      justify-content: center;
+      z-index: 10;
+    }
+    button {
+      font-family: monospace; font-size: 12px;
+      padding: 8px 16px;
+      background: rgba(13,18,32,0.92);
+      color: #5a6a8a;
+      border: 1px solid #1a2440;
+      border-radius: 8px; cursor: pointer;
+      transition: all 0.15s;
+    }
+    button:hover { border-color: #1D9E75; color: #1D9E75; }
+    button.active { background: #1D9E75; color: #080d18; border-color: #1D9E75; }
+  </style>
+</head>
+<body>
+
+<div id="info">
+  <div>DeepVault — Personagem 3D</div>
+  <div id="status">Carregando modelo...</div>
+  <div id="anim-label" style="color:#EF9F27">—</div>
+</div>
+
+<div id="anims"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x080d18);
+scene.fog = new THREE.Fog(0x080d18, 10, 25);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 1.6, 3.5);
+camera.lookAt(0, 0.8, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.8, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+
+// Luzes
+scene.add(new THREE.AmbientLight(0x1a2a4a, 2));
+const dir = new THREE.DirectionalLight(0x1D9E75, 2);
+dir.position.set(2, 4, 2); dir.castShadow = true; scene.add(dir);
+const fill = new THREE.PointLight(0x7F77DD, 1.2, 8);
+fill.position.set(-2, 1.5, 1); scene.add(fill);
+const ground = new THREE.PointLight(0x1D9E75, 0.6, 4);
+ground.position.set(0, 0.1, 0); scene.add(ground);
+
+// Chão
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(12, 12),
+  new THREE.MeshStandardMaterial({ color: 0x0a0f1e, roughness: 0.95 })
+);
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+const loader = new FBXLoader();
+const texLoader = new THREE.TextureLoader();
+const PREFIX = 'Meshy_AI_Person1_biped_';
+const BASE = 'assets/characters/player/';
+
+// Mapa de animações — fruto do mapeamento completo
+const ANIMATIONS = [
+  { label: 'Idle',           path: BASE + 'idle/respire-fundo-e-olhe-ao-redor/',       index: 2 },
+  { label: 'Caminhando',     path: BASE + 'movement/caminhando/',                       index: 4 },
+  { label: 'Casual',         path: BASE + 'movement/caminhada-causal/',                 index: 1 },
+  { label: 'Corrida',        path: BASE + 'movement/corrida/',                          index: 4 },
+  { label: 'Minerando',      path: BASE + 'mining/minerando/',                          index: 9 },
+  { label: 'Coletando',      path: BASE + 'collect/coletando-item/',                    index: 0 },
+  { label: 'Coletando chão', path: BASE + 'collect/coletando-item-do-chao/',            index: 7 },
+  { label: 'Soco',           path: BASE + 'combat/soco/',                               index: 1 },
+  { label: 'Morte',          path: BASE + 'death/morte/',                               index: 0 },
+];
+
+let mixer = null;
+let currentAction = null;
+
+function playAnim(anim) {
+  if (!mixer) return;
+  document.getElementById('status').textContent = `Carregando ${anim.label}...`;
+
+  loader.load(anim.path + PREFIX + 'Meshy_AI_Meshy_Merged_Animations.fbx', (animFbx) => {
+    const clip = animFbx.animations[anim.index];
+    if (!clip) {
+      document.getElementById('status').textContent = `Clip ${anim.index} não encontrado`;
+      return;
+    }
+
+    if (currentAction) currentAction.fadeOut(0.25);
+    const action = mixer.clipAction(clip);
+    action.reset().fadeIn(0.25).play();
+    currentAction = action;
+
+    document.getElementById('status').textContent = 'Tocando ✓';
+    document.getElementById('anim-label').textContent = `${anim.label} — "${clip.name}"`;
+
+    document.querySelectorAll('#anims button').forEach(b => {
+      b.classList.toggle('active', b.dataset.label === anim.label);
+    });
+  }, null, () => {
+    document.getElementById('status').textContent = `Erro: ${anim.label}`;
+  });
+}
+
+// Cria botões
+const container = document.getElementById('anims');
+ANIMATIONS.forEach(anim => {
+  const btn = document.createElement('button');
+  btn.textContent = anim.label;
+  btn.dataset.label = anim.label;
+  btn.onclick = () => playAnim(anim);
+  container.appendChild(btn);
+});
+
+// Carrega modelo
+const IDLE_PATH = ANIMATIONS[0].path;
+loader.load(IDLE_PATH + PREFIX + 'Character_output.fbx', (fbx) => {
+  fbx.scale.setScalar(0.01);
+
+  const map      = texLoader.load(IDLE_PATH + PREFIX + 'texture_0.png');
+  const normal   = texLoader.load(IDLE_PATH + PREFIX + 'texture_0_normal.png');
+  const rough    = texLoader.load(IDLE_PATH + PREFIX + 'texture_0_roughness.png');
+  const metallic = texLoader.load(IDLE_PATH + PREFIX + 'texture_0_metallic.png');
+
+  fbx.traverse(c => {
+    if (c.isMesh) {
+      c.castShadow = true;
+      c.receiveShadow = true;
+      c.material = new THREE.MeshStandardMaterial({
+        map, normalMap: normal,
+        roughnessMap: rough, metalnessMap: metallic,
+        roughness: 0.7, metalness: 0.3,
+      });
+    }
+  });
+
+  scene.add(fbx);
+  mixer = new THREE.AnimationMixer(fbx);
+  document.getElementById('status').textContent = 'Modelo pronto ✓';
+
+  // Toca idle automaticamente
+  playAnim(ANIMATIONS[0]);
+
+}, (xhr) => {
+  document.getElementById('status').textContent =
+    `Carregando... ${Math.round(xhr.loaded / xhr.total * 100)}%`;
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Pulso sutil na luz de chão
+const clock = new THREE.Clock();
+(function animate() {
+  requestAnimationFrame(animate);
+  const delta = clock.getDelta();
+  if (mixer) mixer.update(delta);
+  controls.update();
+  ground.intensity = 0.5 + Math.sin(Date.now() * 0.002) * 0.15;
+  renderer.render(scene, camera);
+})();
+</script>
+</body>
+</html>
