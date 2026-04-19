@@ -19,14 +19,6 @@
       width: 390px;
       height: 700px;
     }
-    #bg-video {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      z-index: 0;
-    }
     canvas {
       position: absolute;
       top: 0; left: 0;
@@ -63,11 +55,6 @@
 <body>
 
 <div id="game-wrapper">
-
-  <video id="bg-video" autoplay muted loop playsinline>
-    <source src="assets/bg-corridor.webm" type="video/webm">
-  </video>
-
   <canvas id="gameCanvas" width="390" height="700"></canvas>
 
   <div id="hud">
@@ -88,7 +75,6 @@
       <span class="hud-value" id="hud-depth">0m</span>
     </div>
   </div>
-
 </div>
 
 <script>
@@ -116,6 +102,7 @@ const state = {
 
 const images = {};
 const toLoad = [
+  ['bg',      'assets/bg-corridor.jpg'],
   ['front',   'assets/player/front.png'],
   ['back',    'assets/player/back.png'],
   ['left',    'assets/player/left.png'],
@@ -141,8 +128,7 @@ const TILE = 40;
 const player = {
   x: W / 2,
   y: H * 0.72,
-  w: 80,
-  h: 100,
+  w: 80, h: 100,
   speed: 3,
   facing: 'back',
   state: 'idle',
@@ -215,13 +201,6 @@ function mineNearbyBlock() {
   }
 }
 
-function updateVideoDepth() {
-  const video = document.getElementById('bg-video');
-  if (!video) return;
-  const depthBonus = Math.min(state.depth / 500, 0.4);
-  video.playbackRate = 1.0 + depthBonus;
-}
-
 function update() {
   if (player.stateTimer > 0) {
     player.stateTimer--;
@@ -254,7 +233,6 @@ function update() {
     if (p.life <= 0) particles.splice(i, 1);
   }
 
-  updateVideoDepth();
   document.getElementById('bar-hp').style.width = (state.hp / state.hpMax * 100) + '%';
   document.getElementById('bar-xp').style.width = (state.xp / state.xpMax * 100) + '%';
   document.getElementById('hud-coins').textContent = state.coins;
@@ -263,10 +241,24 @@ function update() {
 function draw() {
   ctx.clearRect(0, 0, W, H);
 
+  // Background — imagem estática repetida verticalmente
+  if (images.bg && images.bg.complete && images.bg.naturalWidth > 0) {
+    const bgH = images.bg.naturalHeight * (W / images.bg.naturalWidth);
+    const offsetY = -(state.cameraY % bgH);
+    ctx.drawImage(images.bg, 0, offsetY, W, bgH);
+    ctx.drawImage(images.bg, 0, offsetY + bgH, W, bgH);
+    ctx.drawImage(images.bg, 0, offsetY - bgH, W, bgH);
+  } else {
+    ctx.fillStyle = '#080d18';
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Paredes laterais
   ctx.fillStyle = 'rgba(6, 9, 15, 0.82)';
   ctx.fillRect(0, 0, wallW, H);
   ctx.fillRect(W - wallW, 0, wallW, H);
 
+  // Bordas do corredor
   ctx.strokeStyle = 'rgba(29, 158, 117, 0.12)';
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -274,6 +266,7 @@ function draw() {
   ctx.moveTo(W - wallW, 0); ctx.lineTo(W - wallW, H);
   ctx.stroke();
 
+  // Blocos
   blocks.forEach(b => {
     const drawY = b.y - state.cameraY;
     if (drawY > H + TILE || drawY < -TILE) return;
@@ -299,6 +292,7 @@ function draw() {
     }
   });
 
+  // Partículas
   particles.forEach(p => {
     ctx.globalAlpha = p.life;
     ctx.fillStyle = p.color;
@@ -308,6 +302,7 @@ function draw() {
     ctx.globalAlpha = 1;
   });
 
+  // Personagem sprite 2D
   const spriteKey = player.state !== 'idle' ? player.state : player.facing;
   const sprite = images[spriteKey];
   const drawX = player.x - player.w / 2;
@@ -321,6 +316,7 @@ function draw() {
     ctx.fillRect(drawX, drawY + player.h * 0.42, player.w, player.h * 0.58);
   }
 
+  // Névoa inferior
   const grad = ctx.createLinearGradient(0, H * 0.6, 0, H);
   grad.addColorStop(0, 'rgba(8,13,24,0)');
   grad.addColorStop(1, 'rgba(8,13,24,0.35)');
