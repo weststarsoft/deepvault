@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>DeepVault V1</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #030810; overflow: hidden; font-family: 'Courier New', monospace; }
+
+    /* HUD */
+    #hud {
+      position: absolute; top: 0; left: 0; right: 0;
+      padding: 14px 20px;
+      display: flex; gap: 32px; align-items: center;
+      background: linear-gradient(to bottom, rgba(3,8,16,0.92), transparent);
+      pointer-events: none; z-index: 10;
+    }
+    .hud-block { display: flex; flex-direction: column; gap: 4px; }
+    .hud-label {
+      font-size: 9px; letter-spacing: 2px;
+      color: rgba(255,255,255,0.35); text-transform: uppercase;
+    }
+    .hud-bar {
+      width: 110px; height: 5px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 3px; overflow: hidden;
+    }
+    .hud-fill {
+      height: 100%; border-radius: 3px;
+      transition: width 0.4s ease;
+    }
+    #hp-fill  { background: linear-gradient(90deg, #1D9E75, #25c990); width: 100%; }
+    #xp-fill  { background: linear-gradient(90deg, #7F77DD, #a89ef5); width: 0%; }
+    .hud-value {
+      font-size: 13px; font-weight: bold; color: #fff; letter-spacing: 1px;
+    }
+    #coins-val { color: #EF9F27; }
+    #depth-val { color: #1D9E75; }
+
+    /* Tips */
+    #tips {
+      position: absolute; bottom: 20px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px; color: rgba(255,255,255,0.25);
+      letter-spacing: 1.5px; pointer-events: none; z-index: 10;
+      white-space: nowrap;
+    }
+
+    /* Inventory bar */
+    #inventory {
+      position: absolute; bottom: 48px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; gap: 8px;
+      pointer-events: none; z-index: 10;
+    }
+    .inv-slot {
+      width: 48px; height: 48px;
+      background: rgba(3,8,16,0.85);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 2px;
+    }
+    .inv-dot {
+      width: 14px; height: 14px; border-radius: 50%;
+    }
+    .inv-count { font-size: 9px; color: rgba(255,255,255,0.4); }
+
+    /* Mining feedback */
+    #mine-flash {
+      position: absolute; inset: 0;
+      background: radial-gradient(circle at center, rgba(29,158,117,0.15), transparent 60%);
+      opacity: 0; pointer-events: none; z-index: 5;
+      transition: opacity 0.1s;
+    }
+
+    /* Loading overlay */
+    #loading {
+      position: absolute; inset: 0;
+      background: #030810;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px;
+      z-index: 100;
+    }
+    #loading-title {
+      font-size: 28px; font-weight: bold; color: #1D9E75;
+      letter-spacing: 6px; text-transform: uppercase;
+    }
+    #loading-sub { font-size: 10px; color: rgba(255,255,255,0.3); letter-spacing: 3px; }
+    #loading-bar-wrap {
+      width: 200px; height: 2px;
+      background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden;
+    }
+    #loading-bar {
+      height: 100%; width: 0%;
+      background: #1D9E75; border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading">
+  <div id="loading-title">DeepVault</div>
+  <div id="loading-sub">Preparando a caverna...</div>
+  <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="hud-block">
+    <div class="hud-label">HP</div>
+    <div class="hud-bar"><div class="hud-fill" id="hp-fill"></div></div>
+  </div>
+  <div class="hud-block">
+    <div class="hud-label">XP</div>
+    <div class="hud-bar"><div class="hud-fill" id="xp-fill"></div></div>
+  </div>
+  <div class="hud-block">
+    <div class="hud-label">Moedas</div>
+    <div class="hud-value" id="coins-val">0</div>
+  </div>
+  <div class="hud-block">
+    <div class="hud-label">Profundidade</div>
+    <div class="hud-value" id="depth-val">0m</div>
+  </div>
+</div>
+
+<!-- Mining flash -->
+<div id="mine-flash"></div>
+
+<!-- Inventory -->
+<div id="inventory">
+  <div class="inv-slot"><div class="inv-dot" style="background:#888"></div><div class="inv-count" id="inv-0">0</div></div>
+  <div class="inv-slot"><div class="inv-dot" style="background:#6677aa"></div><div class="inv-count" id="inv-1">0</div></div>
+  <div class="inv-slot"><div class="inv-dot" style="background:#EF9F27"></div><div class="inv-count" id="inv-2">0</div></div>
+  <div class="inv-slot"><div class="inv-dot" style="background:#1D9E75"></div><div class="inv-count" id="inv-3">0</div></div>
+  <div class="inv-slot"><div class="inv-dot" style="background:#7F77DD"></div><div class="inv-count" id="inv-4">0</div></div>
+</div>
+
+<!-- Tips -->
+<div id="tips">WASD — mover &nbsp;|&nbsp; Z — minerar &nbsp;|&nbsp; arrastar — girar câmera</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+
+// ─── ESTADO DO JOGO ───────────────────────────────────────────
+const state = {
+  hp: 100, maxHp: 100,
+  xp: 0,   maxXp: 100,
+  coins: 0,
+  depth: 0,
+  inventory: [0, 0, 0, 0, 0],
+  mining: false,
+  miningTarget: null,
+};
+
+// ─── RENDERER ─────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.8;
+document.body.appendChild(renderer.domElement);
+
+// ─── CENA ─────────────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x010a0e);
+scene.fog = new THREE.FogExp2(0x020b10, 0.030);
+
+// ─── CÂMERA ───────────────────────────────────────────────────
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 80);
+
+// ─── CONTROLE DE CÂMERA (arrastar) ───────────────────────────
+const camState = { yaw: 0, pitch: 0.25, distance: 4.5, dragging: false, lastX: 0, lastY: 0 };
+renderer.domElement.addEventListener('mousedown', e => { camState.dragging = true; camState.lastX = e.clientX; camState.lastY = e.clientY; });
+renderer.domElement.addEventListener('mouseup',   () => camState.dragging = false);
+renderer.domElement.addEventListener('mousemove', e => {
+  if (!camState.dragging) return;
+  camState.yaw   -= (e.clientX - camState.lastX) * 0.005;
+  camState.pitch  = Math.max(0.1, Math.min(0.7, camState.pitch + (e.clientY - camState.lastY) * 0.003));
+  camState.lastX = e.clientX; camState.lastY = e.clientY;
+});
+// Touch
+renderer.domElement.addEventListener('touchstart', e => { camState.dragging = true; camState.lastX = e.touches[0].clientX; camState.lastY = e.touches[0].clientY; });
+renderer.domElement.addEventListener('touchend',   () => camState.dragging = false);
+renderer.domElement.addEventListener('touchmove',  e => {
+  camState.yaw   -= (e.touches[0].clientX - camState.lastX) * 0.005;
+  camState.pitch  = Math.max(0.1, Math.min(0.7, camState.pitch + (e.touches[0].clientY - camState.lastY) * 0.003));
+  camState.lastX = e.touches[0].clientX; camState.lastY = e.touches[0].clientY;
+});
+
+// ─── INPUT ────────────────────────────────────────────────────
+const keys = {};
+window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+window.addEventListener('keyup',   e => {
+  keys[e.key.toLowerCase()] = false;
+  if (e.key.toLowerCase() === 'z') stopMining();
+});
+
+// ─── CONSTANTES DA CAVERNA ────────────────────────────────────
+const CAVE_LENGTH = 80;
+const TUNNEL_W    = 4.0;
+const TUNNEL_H    = 5.0;
+const minerals    = [];
+const mineralData = [];
+const crystalLights = [];
+
+// ─── LUZES ────────────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0x1a3a50, 6));
+
+const topLight = new THREE.DirectionalLight(0x2a6070, 2.5);
+topLight.position.set(0, 8, -20);
+scene.add(topLight);
+
+const lantern = new THREE.SpotLight(0xc0e8ff, 22, 28, Math.PI * 0.24, 0.55, 1.3);
+lantern.castShadow = false;
+scene.add(lantern);
+scene.add(lantern.target);
+
+const depthLight = new THREE.PointLight(0x1DE8C0, 12, 40);
+depthLight.position.set(0, TUNNEL_H * 0.5, -(CAVE_LENGTH - 5));
+scene.add(depthLight);
+
+const midLight = new THREE.PointLight(0x0dc8a0, 5, 22);
+midLight.position.set(0, TUNNEL_H * 0.4, -CAVE_LENGTH * 0.55);
+scene.add(midLight);
+
+const atmoLight = new THREE.PointLight(0x3a1a70, 4, 16);
+atmoLight.position.set(0, 1.5, -8);
+scene.add(atmoLight);
+
+// Luzes teal ao longo do túnel (menos que antes — 4 pontos)
+for (let z = -14; z > -CAVE_LENGTH; z -= 20) {
+  const cl = new THREE.PointLight(0x1DE8C0, 2.2, 12);
+  cl.position.set(0, TUNNEL_H * 0.55, z);
+  scene.add(cl);
+}
+
+// ─── TEXTURAS PROCEDURAIS ─────────────────────────────────────
+
+// Textura de rocha: blocos angulares em canvas 256x256 (metade do tamanho anterior)
+function makeRockTexture(cfg) {
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 256;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = cfg.base; ctx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 55; i++) {
+    const bx=Math.random()*256, by=Math.random()*256;
+    const bw=22+Math.random()*70, bh=14+Math.random()*42;
+    ctx.save(); ctx.translate(bx,by); ctx.rotate((Math.random()-0.5)*0.28);
+    const g=ctx.createLinearGradient(-bw/2,-bh/2,bw/2,bh/2);
+    g.addColorStop(0,cfg.light); g.addColorStop(0.4,cfg.mid);
+    g.addColorStop(0.8,cfg.dark); g.addColorStop(1,cfg.mid);
+    const j=()=>(Math.random()-0.5)*6;
+    ctx.beginPath();
+    ctx.moveTo(-bw/2+j(),-bh/2+j()); ctx.lineTo(bw/2+j(),-bh/2+j());
+    ctx.lineTo(bw/2+j(),bh/2+j());   ctx.lineTo(-bw/2+j(),bh/2+j());
+    ctx.closePath();
+    ctx.fillStyle=g; ctx.globalAlpha=0.5+Math.random()*0.45; ctx.fill();
+    ctx.strokeStyle=cfg.edge; ctx.lineWidth=0.8+Math.random(); ctx.globalAlpha=0.7; ctx.stroke();
+    ctx.restore();
+  }
+  const id=ctx.getImageData(0,0,256,256); const d=id.data;
+  for (let p=0;p<d.length;p+=4){const g=(Math.random()-0.5)*18; d[p]=Math.max(0,Math.min(255,d[p]+g)); d[p+1]=Math.max(0,Math.min(255,d[p+1]+g)); d[p+2]=Math.max(0,Math.min(255,d[p+2]+g));}
+  ctx.putImageData(id,0,0);
+  const t=new THREE.CanvasTexture(cv); t.wrapS=t.wrapT=THREE.RepeatWrapping; return t;
+}
+
+// Textura de chão: pedras achatadas claras
+function makeFloorTexture() {
+  const cv=document.createElement('canvas'); cv.width=256; cv.height=256;
+  const ctx=cv.getContext('2d');
+  ctx.fillStyle='#1c2a38'; ctx.fillRect(0,0,256,256);
+  for (let i=0;i<70;i++){
+    const bx=Math.random()*256, by=Math.random()*256;
+    const bw=16+Math.random()*60, bh=6+Math.random()*18;
+    ctx.save(); ctx.translate(bx,by); ctx.rotate((Math.random()-0.5)*0.5);
+    const lum=40+Math.random()*36;
+    const r=Math.round(lum*0.70),g=Math.round(lum*0.80),b=Math.round(lum*0.98);
+    const gr=ctx.createLinearGradient(-bw/2,0,bw/2,0);
+    gr.addColorStop(0,`rgb(${r+18},${g+18},${b+18})`);
+    gr.addColorStop(0.5,`rgb(${r},${g},${b})`);
+    gr.addColorStop(1,`rgb(${r-10},${g-10},${b-10})`);
+    const j=()=>(Math.random()-0.5)*4;
+    ctx.beginPath();
+    ctx.moveTo(-bw/2+j(),-bh/2+j()); ctx.lineTo(bw/2+j(),-bh/2+j());
+    ctx.lineTo(bw/2+j(),bh/2+j());   ctx.lineTo(-bw/2+j(),bh/2+j());
+    ctx.closePath();
+    ctx.fillStyle=gr; ctx.globalAlpha=0.55+Math.random()*0.4; ctx.fill();
+    ctx.strokeStyle=`rgb(${r-26},${g-26},${b-26})`; ctx.lineWidth=0.5; ctx.globalAlpha=0.85; ctx.stroke();
+    ctx.restore();
+  }
+  const id=ctx.getImageData(0,0,256,256); const d=id.data;
+  for(let p=0;p<d.length;p+=4){const g=(Math.random()-0.5)*10; d[p]=Math.max(0,Math.min(255,d[p]+g)); d[p+1]=Math.max(0,Math.min(255,d[p+1]+g)); d[p+2]=Math.max(0,Math.min(255,d[p+2]+g));}
+  ctx.putImageData(id,0,0);
+  const t=new THREE.CanvasTexture(cv); t.wrapS=t.wrapT=THREE.RepeatWrapping; return t;
+}
+
+// Cluster de cristais (geometria hexagonal afilada)
+function makeCrystalCluster(color, emissive, scale, withLight, lightInt) {
+  const group=new THREE.Group();
+  const count=2+Math.floor(Math.random()*3); // max 4 por cluster
+  for (let i=0;i<count;i++){
+    const h=(0.10+Math.random()*0.20)*scale;
+    const r=(0.03+Math.random()*0.06)*scale;
+    const geo=new THREE.CylinderGeometry(r*0.08,r,h,6,1);
+    const mat=new THREE.MeshStandardMaterial({color,emissive,emissiveIntensity:2.5,roughness:0.08,metalness:0.3,transparent:true,opacity:0.9});
+    const c=new THREE.Mesh(geo,mat);
+    c.position.set((Math.random()-0.5)*0.14*scale,h*0.5,(Math.random()-0.5)*0.14*scale);
+    c.rotation.set((Math.random()-0.5)*0.4,Math.random()*Math.PI*2,(Math.random()-0.5)*0.35);
+    group.add(c);
+  }
+  if (withLight){
+    const glow=new THREE.PointLight(emissive,lightInt,5);
+    glow.position.y=0.15*scale; group.add(glow); crystalLights.push(glow);
+  }
+  return group;
+}
+
+// ─── CAVERNA PROCEDURAL ───────────────────────────────────────
+function buildCave() {
+
+  // ── Texturas (geradas uma vez e reutilizadas) ──
+  const wallTex  = makeRockTexture({base:'#0a1220',light:'#1c2d42',mid:'#111c2e',dark:'#070e1c',edge:'#040b18'});
+  wallTex.repeat.set(4, 1.8);
+  const floorTex = makeFloorTexture();
+  floorTex.repeat.set(2, 14);
+  const ceilTex  = makeRockTexture({base:'#080f1a',light:'#141f2e',mid:'#0d1826',dark:'#060c16',edge:'#030910'});
+  ceilTex.repeat.set(3, 1.5);
+
+  // ── Materiais base ──
+  const wallMat  = new THREE.MeshStandardMaterial({map:wallTex, color:0x1a2535, roughness:0.92, metalness:0.05});
+  const floorMat = new THREE.MeshStandardMaterial({map:floorTex, color:0x9aacbe, roughness:0.97, metalness:0});
+  const ceilMat  = new THREE.MeshStandardMaterial({map:ceilTex, color:0x0d1825, roughness:1, metalness:0});
+  const rockMat  = new THREE.MeshStandardMaterial({color:0x0d1828, roughness:0.95, metalness:0.02});
+
+  // ── Chão ──
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(TUNNEL_W+0.4, CAVE_LENGTH, 4, 40), floorMat);
+  floor.rotation.x=-Math.PI/2; floor.position.set(0,0,-CAVE_LENGTH/2+5); floor.receiveShadow=true;
+  scene.add(floor);
+
+  // ── Teto ──
+  const ceil=new THREE.Mesh(new THREE.PlaneGeometry(TUNNEL_W+0.8, CAVE_LENGTH, 4, 30), ceilMat);
+  ceil.rotation.x=Math.PI/2; ceil.position.set(0,TUNNEL_H,-CAVE_LENGTH/2+5);
+  scene.add(ceil);
+
+  // ── Paredes base orgânicas ──
+  for (let side=-1;side<=1;side+=2){
+    const segs=70, verts=[], idx=[];
+    for (let i=0;i<=segs;i++){
+      const z=-i*(CAVE_LENGTH/segs);
+      const x=side*(TUNNEL_W/2+Math.sin(i*0.15)*0.22+(Math.random()-0.5)*0.28);
+      verts.push(x+(Math.random()-0.5)*0.07, 0, z);
+      verts.push(x+(Math.random()-0.5)*0.2, TUNNEL_H+(Math.random()-0.5)*0.28, z);
+    }
+    for (let i=0;i<segs;i++){
+      const a=i*2,b=a+1,c=a+2,d=a+3;
+      if(side>0){idx.push(a,b,c);idx.push(b,d,c);}else{idx.push(a,c,b);idx.push(b,c,d);}
+    }
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+    geo.setIndex(idx); geo.computeVertexNormals();
+    const wm=wallMat.clone();
+    // Textura independente por parede
+    const wt=makeRockTexture({base:'#0a1220',light:'#1c2d42',mid:'#111c2e',dark:'#070e1c',edge:'#040b18'});
+    wt.repeat.set(4,1.5); wm.map=wt;
+    const wall=new THREE.Mesh(geo,wm);
+    wall.castShadow=true; wall.receiveShadow=true;
+    scene.add(wall);
+  }
+
+  // ── Blocos angulares nas paredes — INSTANCIADOS (60 total, era 200) ──
+  // Usa uma única geometria base reutilizada com materiais variados
+  const blockGeoBase = new THREE.BoxGeometry(1,1,1);
+  for (let side=-1;side<=1;side+=2){
+    for (let i=0;i<30;i++){
+      const bw=0.35+Math.random()*0.8, bh=0.22+Math.random()*0.5, bd=0.1+Math.random()*0.22;
+      const pos=blockGeoBase.clone();
+      // Escala no lugar de criar nova geometria
+      const block=new THREE.Mesh(pos, rockMat.clone());
+      block.scale.set(bd, bh, bw);
+      // Pequena rotação nos vértices via rotation
+      block.rotation.set((Math.random()-0.5)*0.06, (Math.random()-0.5)*0.16, (Math.random()-0.5)*0.08);
+      block.position.set(
+        side*(TUNNEL_W/2+0.02),
+        0.12+Math.random()*(TUNNEL_H-0.18),
+        -(Math.random()*(CAVE_LENGTH-4)+1)
+      );
+      block.material.color.setHex(0x0c1828+Math.floor(Math.random()*0x080a10));
+      block.castShadow=true; block.receiveShadow=true;
+      scene.add(block);
+    }
+  }
+
+  // ── Pedras no chão (bordas) — 30 total, era 120 ──
+  for (let side=-1;side<=1;side+=2){
+    for (let i=0;i<15;i++){
+      const w=0.2+Math.random()*0.5, h=0.05+Math.random()*0.13;
+      const rock=new THREE.Mesh(new THREE.BoxGeometry(w,h,0.15+Math.random()*0.38), rockMat);
+      rock.position.set(side*(TUNNEL_W/2-0.05+Math.random()*0.25), h*0.5, -(Math.random()*(CAVE_LENGTH-4)+2));
+      rock.rotation.y=Math.random()*Math.PI;
+      scene.add(rock);
+    }
+  }
+
+  // ── Stalactites — 40 (era 70) ──
+  for (let i=0;i<40;i++){
+    const h=0.2+Math.random()*1.2, r=0.03+Math.random()*0.10;
+    const m=new THREE.Mesh(new THREE.ConeGeometry(r,h,5), new THREE.MeshStandardMaterial({color:0x0b1220,roughness:0.95}));
+    m.position.set((Math.random()-0.5)*(TUNNEL_W-0.3), TUNNEL_H-h*0.5, -(Math.random()*(CAVE_LENGTH-4)+2));
+    m.rotation.z=Math.PI; m.rotation.y=Math.random()*Math.PI;
+    scene.add(m);
+  }
+
+  // ── Estalagmites — 25 (era 45) ──
+  for (let i=0;i<25;i++){
+    const h=0.1+Math.random()*0.5, r=0.025+Math.random()*0.06;
+    const px=(Math.random()-0.5)*(TUNNEL_W-0.3);
+    if(Math.abs(px)<0.65) continue;
+    const m=new THREE.Mesh(new THREE.ConeGeometry(r,h,5), new THREE.MeshStandardMaterial({color:0x0d1828,roughness:0.97}));
+    m.position.set(px, h*0.5, -(Math.random()*(CAVE_LENGTH-4)+2));
+    m.rotation.y=Math.random()*Math.PI;
+    scene.add(m);
+  }
+
+  // ── Cristais teal nas paredes — 14 clusters ──
+  for (let i=0;i<14;i++){
+    const side=Math.random()<0.5?-1:1;
+    const scale=1.0+Math.random()*1.5;
+    const cl=makeCrystalCluster(0x1DE8C0,0x0db89a,scale,true,1.8+Math.random()*1.2);
+    cl.position.set(side*(TUNNEL_W/2+0.06), 0.5+Math.random()*(TUNNEL_H-1.2), -(Math.random()*(CAVE_LENGTH-8)+4));
+    cl.rotation.z=side*(Math.PI*0.5+(Math.random()-0.5)*0.4);
+    cl.rotation.y=(Math.random()-0.5)*0.5;
+    scene.add(cl);
+  }
+
+  // ── Cristais roxos no chão — 20 clusters ──
+  for (let i=0;i<20;i++){
+    const side=Math.random()<0.5?-1:1;
+    const scale=0.5+Math.random()*0.85;
+    const cl=makeCrystalCluster(0x8833ff,0x5522cc,scale,scale>1.0,0.7);
+    cl.position.set(side*(0.5+Math.random()*(TUNNEL_W/2-0.3)), 0, -(Math.random()*(CAVE_LENGTH-6)+3));
+    cl.rotation.y=Math.random()*Math.PI*2;
+    scene.add(cl);
+  }
+
+  // ── Minerais coletáveis — 40 (era 55) ──
+  const MINERAL_TYPES=[
+    {color:0x889aaa,emissive:0x2a3a4a,rarity:'comum',   inv:0},
+    {color:0x6677cc,emissive:0x222255,rarity:'incomum', inv:1},
+    {color:0xEF9F27,emissive:0x553300,rarity:'raro',    inv:2},
+    {color:0x1DE8C0,emissive:0x004433,rarity:'cristal', inv:3},
+    {color:0x8833ff,emissive:0x330066,rarity:'relíquia',inv:4},
+  ];
+  for (let i=0;i<40;i++){
+    const typeIdx=weightedRandom([0.4,0.25,0.18,0.1,0.07]);
+    const type=MINERAL_TYPES[typeIdx];
+    const size=0.08+Math.random()*0.1;
+    const mat=new THREE.MeshStandardMaterial({color:type.color,emissive:type.emissive,
+      emissiveIntensity:type.rarity==='cristal'||type.rarity==='relíquia'?2.0:0.6,roughness:0.2,metalness:0.7});
+    const mineral=new THREE.Mesh(new THREE.OctahedronGeometry(size,0),mat);
+    const side=Math.random()<0.5?-1:1;
+    const zPos=-(Math.random()*(CAVE_LENGTH-6)+3);
+    const yPos=0.3+Math.random()*(TUNNEL_H-0.8);
+    const xPos=side*(TUNNEL_W/2-0.05+Math.random()*0.15);
+    mineral.position.set(xPos,yPos,zPos);
+    mineral.userData={type,typeIdx,collected:false,baseY:yPos,baseX:xPos};
+    if(type.rarity==='cristal'||type.rarity==='relíquia') mineral.add(new THREE.PointLight(type.color,1.5,2.5));
+    scene.add(mineral); minerals.push(mineral);
+  }
+}
+
+function weightedRandom(weights) {
+  const r = Math.random();
+  let acc = 0;
+  for (let i = 0; i < weights.length; i++) {
+    acc += weights[i];
+    if (r < acc) return i;
+  }
+  return weights.length - 1;
+}
+
+buildCave();
+
+// ─── PERSONAGEM ───────────────────────────────────────────────
+const loader    = new THREE.Loader ? null : null; // será FBXLoader
+const fbxLoader = new FBXLoader();
+const texLoader = new THREE.TextureLoader();
+
+const PREFIX = 'Meshy_AI_Person1_biped_';
+const BASE   = 'assets/characters/player/';
+
+const ANIMS = {
+  idle:   { path: BASE + 'idle/respire-fundo-e-olhe-ao-redor/',   index: 2 },
+  walk:   { path: BASE + 'movement/caminhando/',                   index: 4 },
+  mine:   { path: BASE + 'mining/minerando/',                      index: 9 },
+};
+
+let playerMesh   = null;
+let mixer        = null;
+let actions      = {};
+let currentAnim  = null;
+const playerPos  = new THREE.Vector3(0, 0, 2);
+const playerDir  = new THREE.Vector3(0, 0, -1);
+
+function setProgress(pct, msg) {
+  document.getElementById('loading-bar').style.width = pct + '%';
+  document.getElementById('loading-sub').textContent = msg;
+}
+
+function switchAnim(name, crossfade = 0.25) {
+  if (currentAnim === name) return;
+  const prev = actions[currentAnim];
+  const next = actions[name];
+  if (!next) return;
+  if (prev) prev.fadeOut(crossfade);
+  next.reset().fadeIn(crossfade).play();
+  currentAnim = name;
+}
+
+function loadAnim(name, data) {
+  return new Promise((resolve) => {
+    fbxLoader.load(data.path + PREFIX + 'Meshy_AI_Meshy_Merged_Animations.fbx', (fbx) => {
+      const clip = fbx.animations[data.index];
+      if (clip && mixer) {
+        actions[name] = mixer.clipAction(clip);
+      }
+      resolve();
+    }, null, () => resolve());
+  });
+}
+
+// Carrega modelo base + animações
+setProgress(10, 'Carregando personagem...');
+
+const IDLE_PATH = ANIMS.idle.path;
+fbxLoader.load(IDLE_PATH + PREFIX + 'Character_output.fbx', async (fbx) => {
+  setProgress(40, 'Aplicando texturas...');
+
+  fbx.scale.setScalar(0.01);
+  fbx.position.copy(playerPos);
+
+  const map      = texLoader.load(IDLE_PATH + PREFIX + 'texture_0.png');
+  const normal   = texLoader.load(IDLE_PATH + PREFIX + 'texture_0_normal.png');
+  const rough    = texLoader.load(IDLE_PATH + PREFIX + 'texture_0_roughness.png');
+  const metallic = texLoader.load(IDLE_PATH + PREFIX + 'texture_0_metallic.png');
+
+  fbx.traverse(c => {
+    if (c.isMesh) {
+      c.castShadow = true;
+      c.receiveShadow = true;
+      c.material = new THREE.MeshStandardMaterial({
+        map, normalMap: normal,
+        roughnessMap: rough, metalnessMap: metallic,
+        roughness: 0.7, metalness: 0.3,
+      });
+    }
+  });
+
+  scene.add(fbx);
+  playerMesh = fbx;
+  mixer = new THREE.AnimationMixer(fbx);
+
+  setProgress(60, 'Carregando animações...');
+  await loadAnim('idle', ANIMS.idle);
+  setProgress(75, 'Carregando movimento...');
+  await loadAnim('walk', ANIMS.walk);
+  setProgress(90, 'Carregando mineração...');
+  await loadAnim('mine', ANIMS.mine);
+
+  setProgress(100, 'Pronto!');
+  switchAnim('idle');
+
+  setTimeout(() => {
+    document.getElementById('loading').style.display = 'none';
+  }, 400);
+
+}, (xhr) => {
+  const pct = Math.min(38, Math.round(xhr.loaded / (xhr.total || 1e6) * 38));
+  setProgress(10 + pct, 'Carregando personagem...');
+}, () => {
+  document.getElementById('loading-sub').textContent = 'Erro ao carregar personagem. Verifique os assets.';
+});
+
+// ─── MINERAÇÃO ────────────────────────────────────────────────
+let miningTimer  = 0;
+let miningFlash  = document.getElementById('mine-flash');
+
+function findNearestMineral() {
+  let best = null, bestDist = 1.8;
+  for (const m of minerals) {
+    if (m.userData.collected) continue;
+    const d = m.position.distanceTo(playerPos);
+    if (d < bestDist) { bestDist = d; best = m; }
+  }
+  return best;
+}
+
+function collectMineral(m) {
+  const { typeIdx, type } = m.userData;
+  state.inventory[typeIdx]++;
+  state.xp = Math.min(state.maxXp, state.xp + 8 + typeIdx * 5);
+  state.coins += typeIdx * 3 + 1;
+
+  document.getElementById('inv-' + typeIdx).textContent = state.inventory[typeIdx];
+  document.getElementById('coins-val').textContent = state.coins;
+  document.getElementById('xp-fill').style.width = (state.xp / state.maxXp * 100) + '%';
+
+  // Flash de tela
+  miningFlash.style.opacity = '1';
+  setTimeout(() => miningFlash.style.opacity = '0', 120);
+
+  // Remove visual
+  scene.remove(m);
+  m.userData.collected = true;
+}
+
+function stopMining() {
+  state.mining = false;
+  state.miningTarget = null;
+  miningTimer = 0;
+}
+
+// ─── LOOP PRINCIPAL ───────────────────────────────────────────
+const clock = new THREE.Clock();
+const _camPos = new THREE.Vector3();
+const _forward = new THREE.Vector3();
+const _right = new THREE.Vector3();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const delta = Math.min(clock.getDelta(), 0.05);
+
+  if (mixer) mixer.update(delta);
+
+  if (playerMesh) {
+    // ── Movimento ──
+    const speed = 3.5;
+    let moved = false;
+
+    // Direção frontal baseada no yaw da câmera
+    _forward.set(Math.sin(camState.yaw), 0, Math.cos(camState.yaw));
+    _right.set(Math.cos(camState.yaw), 0, -Math.sin(camState.yaw));
+
+    const moveDir = new THREE.Vector3();
+
+    if (keys['w'] || keys['arrowup'])    moveDir.addScaledVector(_forward, -1);
+    if (keys['s'] || keys['arrowdown'])  moveDir.addScaledVector(_forward,  1);
+    if (keys['a'] || keys['arrowleft'])  moveDir.addScaledVector(_right,   -1);
+    if (keys['d'] || keys['arrowright']) moveDir.addScaledVector(_right,    1);
+
+    if (moveDir.lengthSq() > 0) {
+      moveDir.normalize();
+      playerPos.addScaledVector(moveDir, speed * delta);
+
+      // Limita dentro do túnel
+      playerPos.x = Math.max(-TUNNEL_W / 2 + 0.3, Math.min(TUNNEL_W / 2 - 0.3, playerPos.x));
+      playerPos.z = Math.max(-(CAVE_LENGTH - 2), Math.min(4, playerPos.z));
+      playerPos.y = 0;
+
+      // Gira personagem na direção do movimento
+      const angle = Math.atan2(moveDir.x, moveDir.z);
+      playerMesh.rotation.y = angle;
+
+      moved = true;
+    }
+
+    // ── Mineração ──
+    if (keys['z'] && !moved) {
+      state.mining = true;
+      if (!state.miningTarget) {
+        state.miningTarget = findNearestMineral();
+      }
+      if (state.miningTarget) {
+        miningTimer += delta;
+        if (miningTimer >= 1.2) {
+          collectMineral(state.miningTarget);
+          state.miningTarget = null;
+          miningTimer = 0;
+        }
+      }
+    } else if (!keys['z']) {
+      stopMining();
+    }
+
+    // ── Animações ──
+    if (moved) {
+      switchAnim('walk');
+    } else if (keys['z']) {
+      switchAnim('mine');
+    } else {
+      switchAnim('idle');
+    }
+
+    // ── Atualiza mesh ──
+    playerMesh.position.copy(playerPos);
+
+    // ── Profundidade ──
+    state.depth = Math.max(0, Math.round(-playerPos.z * 4.5));
+    document.getElementById('depth-val').textContent = state.depth + 'm';
+
+    // ── Câmera third-person ──
+    const cy = camState.pitch;
+    const cd = camState.distance;
+    _camPos.set(
+      playerPos.x + Math.sin(camState.yaw) * cd * Math.cos(cy),
+      playerPos.y + Math.sin(cy) * cd + 0.8,
+      playerPos.z + Math.cos(camState.yaw) * cd * Math.cos(cy)
+    );
+    camera.position.lerp(_camPos, 0.12);
+    camera.lookAt(playerPos.x, playerPos.y + 1.0, playerPos.z);
+
+    // ── Lanterna segue câmera ──
+    lantern.position.copy(camera.position);
+    lantern.target.position.set(playerPos.x, playerPos.y + 0.8, playerPos.z);
+    lantern.target.updateMatrixWorld();
+
+    // ── Minerais flutuam ──
+    const t = Date.now() * 0.001;
+    for (const m of minerals) {
+      if (m.userData.collected) continue;
+      const r = m.userData.type.rarity;
+      if (r === 'cristal' || r === 'relíquia') {
+        m.position.y = m.userData.baseY + Math.sin(t * 1.5 + m.position.z) * 0.08;
+        m.rotation.y += delta * 1.2;
+      } else {
+        m.rotation.y += delta * 0.3;
+      }
+    }
+
+    // ── Luz atmosférica pulsa ──
+    atmoLight.intensity = 3.0 + Math.sin(t * 0.7) * 1.0;
+    atmoLight.position.z = -6 + Math.sin(t * 0.3) * 2.5;
+
+    // ── Cristais teal pulsam com fase individual ──
+    for (let ci=0; ci<crystalLights.length; ci++){
+      const cl=crystalLights[ci];
+      if (!cl.userData._base) cl.userData._base=cl.intensity;
+      cl.intensity=cl.userData._base+Math.sin(t*1.2+ci*1.37)*0.7;
+    }
+  }
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+// ─── RESIZE ───────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
